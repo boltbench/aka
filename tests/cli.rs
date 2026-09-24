@@ -914,3 +914,54 @@ fn setup_can_skip_zsh_completion() {
             .contains("compinit")
     );
 }
+
+#[test]
+fn tags_group_aliases() {
+    let env = Env::new();
+    env.run(&["add", "--tag", "git", "gs", "git status"])
+        .success();
+    env.run(&["add", "gl", "git log", "-t", "git,log"])
+        .success();
+    env.run(&["add", "ll", "ls -la"]).success();
+    env.run(&["add", "--tag", "Bad Tag", "x", "y"])
+        .failure()
+        .stderr(predicate::str::contains("valid tag"));
+
+    env.run(&["list", "--tag", "git", "--plain"])
+        .success()
+        .stdout("gl\tgit log\ngs\tgit status\n");
+    env.run(&["tags"])
+        .success()
+        .stdout(predicate::str::contains("git  (2)  gl gs"));
+
+    env.run(&["tag", "ll", "files"]).success();
+    env.run(&["show", "ll"])
+        .success()
+        .stdout(predicate::str::contains("tags         files"));
+    env.run(&["untag", "gl", "log"]).success();
+    env.run(&["tags"])
+        .success()
+        .stdout(predicate::str::contains("log").not());
+
+    // a whole group on and off
+    env.run(&["disable", "--tag", "git"]).success();
+    let out = env.aka().args(["list", "--json"]).output().unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let enabled: Vec<bool> = v
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["enabled"].as_bool().unwrap())
+        .collect();
+    assert_eq!(enabled, [false, false, true]);
+    assert_eq!(v[0]["tags"], serde_json::json!(["git"]));
+    env.run(&["enable", "--tag", "git"]).success();
+    env.run(&["enable", "--tag", "nope"])
+        .failure()
+        .stderr(predicate::str::contains("no aliases are tagged"));
+
+    // tags aren't protected by a lock, the command is
+    env.run(&["lock", "gs"]).success();
+    env.run(&["tag", "gs", "daily"]).success();
+    env.run(&["undo"]).success();
+}

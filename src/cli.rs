@@ -100,15 +100,40 @@ pub enum Command {
 
     /// Turn aliases back on
     Enable {
-        #[arg(required = true, add = alias_names())]
+        #[arg(required_unless_present = "tag", add = alias_names())]
         names: Vec<String>,
+        /// Every alias with this tag
+        #[arg(long, add = tag_names())]
+        tag: Option<String>,
     },
 
     /// Turn aliases off without deleting them
     Disable {
-        #[arg(required = true, add = alias_names())]
+        #[arg(required_unless_present = "tag", add = alias_names())]
         names: Vec<String>,
+        /// Every alias with this tag
+        #[arg(long, add = tag_names())]
+        tag: Option<String>,
     },
+
+    /// Add tags to an alias
+    Tag {
+        #[arg(add = alias_names())]
+        name: String,
+        #[arg(required = true, add = tag_names())]
+        tags: Vec<String>,
+    },
+
+    /// Remove tags from an alias
+    Untag {
+        #[arg(add = alias_names())]
+        name: String,
+        #[arg(required = true, add = tag_names())]
+        tags: Vec<String>,
+    },
+
+    /// List your tags
+    Tags,
 
     /// Protect aliases from being replaced, renamed or removed
     Lock {
@@ -218,6 +243,10 @@ pub struct AddOpts {
     #[arg(short, long)]
     pub description: Option<String>,
 
+    /// Group it under these tags, e.g. --tag git
+    #[arg(short, long = "tag", value_delimiter = ',', add = tag_names())]
+    pub tags: Vec<String>,
+
     /// Only define it in these shells
     #[arg(long = "shell", value_delimiter = ',')]
     pub shells: Vec<Shell>,
@@ -260,6 +289,7 @@ impl AddArgs {
         let t = trailing.opts;
         let o = &mut self.opts;
         o.description = t.description.or(o.description.take());
+        o.tags.extend(t.tags);
         o.shells.extend(t.shells);
         o.os.extend(t.os);
         o.lock |= t.lock;
@@ -285,9 +315,16 @@ impl AddArgs {
             // or one of aka's long options. `-d nginx` alone is far more likely
             // to be the command's own flag.
             let long_option = tail.iter().any(|t| {
-                ["--description", "--shell", "--os", "--lock", "--confirm"]
-                    .iter()
-                    .any(|f| t == f || t.starts_with(&format!("{f}=")))
+                [
+                    "--description",
+                    "--tag",
+                    "--shell",
+                    "--os",
+                    "--lock",
+                    "--confirm",
+                ]
+                .iter()
+                .any(|f| t == f || t.starts_with(&format!("{f}=")))
             });
             let sentence = parsed
                 .opts
@@ -303,6 +340,10 @@ impl AddArgs {
 pub struct ListArgs {
     /// Only show aliases whose name, command or description contains this
     pub filter: Option<String>,
+
+    /// Only show aliases with this tag
+    #[arg(long, add = tag_names())]
+    pub tag: Option<String>,
 
     /// Output format
     #[arg(long, value_enum, default_value_t = Format::Table)]
@@ -360,6 +401,23 @@ fn alias_names() -> ArgValueCandidates {
                 CompletionCandidate::new(name).help(Some(help.into()))
             })
             .collect()
+    })
+}
+
+fn tag_names() -> ArgValueCandidates {
+    ArgValueCandidates::new(|| {
+        let Some(state) = Paths::resolve().ok().and_then(|p| store::load(&p).ok()) else {
+            return Vec::new();
+        };
+        let mut tags: Vec<String> = state
+            .aliases
+            .aliases
+            .into_values()
+            .flat_map(|a| a.tags)
+            .collect();
+        tags.sort();
+        tags.dedup();
+        tags.into_iter().map(CompletionCandidate::new).collect()
     })
 }
 

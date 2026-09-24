@@ -39,6 +39,7 @@ fn default_view(ctx: &Ctx) -> Result<()> {
         ctx,
         ListArgs {
             filter: None,
+            tag: None,
             format: Format::Table,
             json: false,
             plain: false,
@@ -102,16 +103,21 @@ fn dispatch(ctx: &Ctx, command: Command) -> Result<()> {
         Command::Rename { old, new } => manage::rename(ctx, &old, &new),
         Command::Cp { source, target } => manage::cp(ctx, &source, &target),
         Command::Edit { name } => manage::edit(ctx, name),
-        Command::Enable { names } => {
+        Command::Enable { names, tag } => {
+            let names = manage::with_tag(ctx, names, tag)?;
             manage::set_flag(ctx, names, "enable", "enabled", |a: &mut Alias| {
                 !std::mem::replace(&mut a.enabled, true)
             })
         }
-        Command::Disable { names } => {
+        Command::Disable { names, tag } => {
+            let names = manage::with_tag(ctx, names, tag)?;
             manage::set_flag(ctx, names, "disable", "disabled", |a: &mut Alias| {
                 std::mem::replace(&mut a.enabled, false)
             })
         }
+        Command::Tag { name, tags } => manage::tag(ctx, &name, tags, true),
+        Command::Untag { name, tags } => manage::tag(ctx, &name, tags, false),
+        Command::Tags => list::tags(ctx),
         Command::Lock { names } => {
             manage::set_flag(ctx, names, "lock", "locked", |a: &mut Alias| {
                 !std::mem::replace(&mut a.locked, true)

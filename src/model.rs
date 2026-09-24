@@ -98,6 +98,8 @@ pub struct Alias {
     pub command: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub enabled: bool,
     /// Empty means every shell.
@@ -120,6 +122,7 @@ impl Alias {
         Self {
             command: command.into(),
             description: None,
+            tags: Vec::new(),
             enabled: true,
             shells: Vec::new(),
             os: Vec::new(),

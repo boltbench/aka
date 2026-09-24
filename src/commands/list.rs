@@ -16,6 +16,7 @@ struct JsonAlias<'a> {
     name: &'a str,
     command: &'a str,
     description: Option<&'a str>,
+    tags: &'a [String],
     enabled: bool,
     shells: &'a [Shell],
     os: &'a [Os],
@@ -31,6 +32,7 @@ pub fn list(ctx: &Ctx, args: ListArgs) -> Result<()> {
         .aliases
         .aliases
         .iter()
+        .filter(|(_, alias)| args.tag.as_ref().is_none_or(|t| alias.tags.contains(t)))
         .filter(|(name, alias)| match &needle {
             None => true,
             Some(n) => {
@@ -69,6 +71,7 @@ pub fn list(ctx: &Ctx, args: ListArgs) -> Result<()> {
                     name,
                     command: &a.command,
                     description: a.description.as_deref(),
+                    tags: &a.tags,
                     enabled: a.enabled,
                     shells: &a.shells,
                     os: &a.os,
@@ -93,6 +96,7 @@ pub fn list(ctx: &Ctx, args: ListArgs) -> Result<()> {
                 return Ok(());
             }
             let show_desc = items.iter().any(|(_, a)| a.description.is_some());
+            let show_tags = items.iter().any(|(_, a)| !a.tags.is_empty());
             let show_notes = items.iter().any(|(_, a)| !a.notes().is_empty());
             let color = ui::color_stdout();
 
@@ -103,6 +107,9 @@ pub fn list(ctx: &Ctx, args: ListArgs) -> Result<()> {
             let mut header = vec!["NAME", "COMMAND"];
             if show_desc {
                 header.push("DESCRIPTION");
+            }
+            if show_tags {
+                header.push("TAGS");
             }
             if show_notes {
                 header.push("NOTES");
@@ -132,6 +139,11 @@ pub fn list(ctx: &Ctx, args: ListArgs) -> Result<()> {
                         color,
                         dim,
                     ));
+                }
+                if show_tags {
+                    row.push(styled(Cell::new(alias.tags.join(", ")), color, |c| {
+                        c.fg(Color::Magenta)
+                    }));
                 }
                 if show_notes {
                     row.push(styled(Cell::new(alias.notes().join(", ")), color, |c| {
@@ -190,6 +202,9 @@ pub fn show(ctx: &Ctx, name: &str) -> Result<()> {
     if let Some(d) = &alias.description {
         ui::print(format!("  description  {d}"));
     }
+    if !alias.tags.is_empty() {
+        ui::print(format!("  tags         {}", alias.tags.join(", ")));
+    }
     ui::print(format!(
         "  shells       {}",
         all(join(alias.shells.iter().map(|s| s.to_string()).collect()))
@@ -232,6 +247,24 @@ pub fn history(ctx: &Ctx, limit: usize) -> Result<()> {
             })
             .unwrap_or_else(|_| entry.time.clone());
         ui::print(format!("{when}  {}", entry.message));
+    }
+    Ok(())
+}
+
+pub fn tags(ctx: &Ctx) -> Result<()> {
+    let state = store::load(&ctx.paths)?;
+    let mut counts: std::collections::BTreeMap<&str, Vec<&str>> = Default::default();
+    for (name, alias) in &state.aliases.aliases {
+        for tag in &alias.tags {
+            counts.entry(tag).or_default().push(name);
+        }
+    }
+    if counts.is_empty() {
+        ui::info("No tags yet. Add one with `aka tag <alias> <tag>`.");
+        return Ok(());
+    }
+    for (tag, names) in counts {
+        ui::print(format!("{tag}  ({})  {}", names.len(), names.join(" ")));
     }
     Ok(())
 }

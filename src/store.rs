@@ -176,9 +176,11 @@ pub fn locked_change(before: &AliasFile, after: &AliasFile) -> Option<String> {
         .find(|(name, old)| match after.aliases.get(*name) {
             None => true,
             Some(new) => {
+                // Turning it on or off, unlocking it and tagging it are fine.
                 let comparable = Alias {
                     locked: true,
                     enabled: old.enabled,
+                    tags: old.tags.clone(),
                     ..new.clone()
                 };
                 &comparable != *old

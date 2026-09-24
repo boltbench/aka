@@ -162,6 +162,19 @@ pub fn validate_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn validate_tag(tag: &str) -> Result<()> {
+    if tag.is_empty() || tag.len() > 32 {
+        bail!("a tag needs 1 to 32 characters");
+    }
+    if !tag
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+    {
+        bail!("`{tag}` isn't a valid tag. Use lowercase letters, numbers, `-` or `_`");
+    }
+    Ok(())
+}
+
 pub fn validate_command(command: &str) -> Result<()> {
     if command.trim().is_empty() {
         bail!("the command can't be empty");

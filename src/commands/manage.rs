@@ -32,7 +32,11 @@ pub fn add(ctx: &Ctx, mut args: AddArgs) -> Result<()> {
 
     let mut alias = Alias::new(&command);
     let opts = args.opts;
+    for tag in &opts.tags {
+        safety::validate_tag(tag)?;
+    }
     alias.description = opts.description.filter(|d| !d.trim().is_empty());
+    alias.tags = sorted_tags(opts.tags);
     alias.shells = dedup(opts.shells);
     alias.os = dedup(opts.os);
     alias.locked = opts.lock;
@@ -155,6 +159,7 @@ fn merge(old: &Alias, new: &Alias) -> Alias {
     Alias {
         command: new.command.clone(),
         description: new.description.clone().or_else(|| old.description.clone()),
+        tags: sorted_tags(old.tags.iter().chain(&new.tags).cloned().collect()),
         enabled: old.enabled,
         shells: if new.shells.is_empty() {
             old.shells.clone()
@@ -642,6 +647,71 @@ fn join_command(parts: &[String]) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn sorted_tags(mut tags: Vec<String>) -> Vec<String> {
+    tags.sort();
+    tags.dedup();
+    tags
+}
+
+/// Adds or removes tags on one alias.
+pub fn tag(ctx: &Ctx, name: &str, tags: Vec<String>, add: bool) -> Result<()> {
+    for t in &tags {
+        safety::validate_tag(t)?;
+    }
+    let changed = store::mutate(ctx, |state| {
+        existing(state, name)?;
+        let alias = state.get_mut(name).expect("checked above");
+        let before = alias.tags.clone();
+        if add {
+            alias.tags = sorted_tags(before.iter().chain(&tags).cloned().collect());
+        } else {
+            alias.tags.retain(|t| !tags.contains(t));
+        }
+        if alias.tags == before {
+            return Ok(None);
+        }
+        Ok(Some(format!(
+            "{} {name} {}",
+            if add { "tag" } else { "untag" },
+            tags.join(", ")
+        )))
+    })?;
+    if changed {
+        let list = tags.join(", ");
+        if add {
+            ui::ok(format!("Tagged {} with {list}.", ui::code(name)));
+        } else {
+            ui::ok(format!("Removed {list} from {}.", ui::code(name)));
+        }
+    } else if !ctx.dry_run {
+        ui::hint("Nothing to change.");
+    }
+    Ok(())
+}
+
+/// The names given, plus every alias with `tag` if there is one.
+pub fn with_tag(ctx: &Ctx, mut names: Vec<String>, tag: Option<String>) -> Result<Vec<String>> {
+    let Some(tag) = tag else {
+        return Ok(names);
+    };
+    let state = store::load(&ctx.paths)?;
+    let tagged: Vec<String> = state
+        .aliases
+        .aliases
+        .iter()
+        .filter(|(_, a)| a.tags.contains(&tag))
+        .map(|(n, _)| n.clone())
+        .collect();
+    if tagged.is_empty() {
+        bail!(
+            "no aliases are tagged {}. See your tags with `aka tags`",
+            ui::code(&tag)
+        );
+    }
+    names.extend(tagged);
+    Ok(names)
 }
 
 fn dedup<T: PartialEq>(items: Vec<T>) -> Vec<T> {
