@@ -1,0 +1,56 @@
+name: Bug report
+description: Something doesn't work the way it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you ran, what you expected, and what you got instead.
+      placeholder: |
+        I ran `aka add gs "git status"` and then `gs` said "command not found".
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. aka setup
+        2. aka add gs "git status"
+        3. gs
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `aka doctor`
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: aka version
+      placeholder: aka 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Linux, Windows]
+    validations:
+      required: true
+  - type: dropdown
+    id: shell
+    attributes:
+      label: Shell
+      options: [bash, zsh, fish, PowerShell 7 (pwsh), Windows PowerShell 5.1]
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Shell framework (oh-my-zsh, starship...), terminal, or anything unusual in your setup.
