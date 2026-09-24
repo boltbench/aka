@@ -1,0 +1,161 @@
+name: Release
+
+# Push a tag like v0.1.0 to build every platform and publish a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-apple-darwin, os: macos-13 }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+          - { target: aarch64-pc-windows-msvc, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          name="aka-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir "$name"
+          cp "target/${{ matrix.target }}/release/aka" README.md LICENSE "$name/"
+          tar -czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $name = "aka-$env:GITHUB_REF_NAME-${{ matrix.target }}"
+          New-Item -ItemType Directory $name | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/aka.exe", README.md, LICENSE $name
+          Compress-Archive -Path $name -DestinationPath "$name.zip"
+          $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name.zip" | Out-File -Encoding ascii -NoNewline "$name.zip.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            aka-*.tar.gz*
+            aka-*.zip*
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Release notes from the changelog
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            $0 ~ "^## " v " " || $0 == "## " v { on = 1; next }
+            /^## / && on { exit }
+            on
+          ' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "Release $GITHUB_REF_NAME" > notes.md
+          cat dist/*.sha256 > dist/checksums.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          files: |
+            dist/*
+            install.sh
+            install.ps1
+
+  homebrew:
+    name: Update Homebrew tap
+    needs: release
+    runs-on: ubuntu-latest
+    # Set HOMEBREW_TAP_TOKEN (a token that can push to zeuslcf/homebrew-tap) to turn this on.
+    env:
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    if: ${{ vars.HOMEBREW_TAP_ENABLED == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write the formula and push it to the tap
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          ./packaging/render.sh homebrew "$version" > aka.rb
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/zeuslcf/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp aka.rb tap/Formula/aka.rb
+          cd tap
+          git config user.name "Zouhair Loucif"
+          git config user.email "26085706+zeuslcf@users.noreply.github.com"
+          git add Formula/aka.rb
+          git commit -m "aka ${version}"
+          git push
+
+  scoop:
+    name: Update Scoop bucket
+    needs: release
+    runs-on: ubuntu-latest
+    # Set SCOOP_BUCKET_TOKEN (a token that can push to zeuslcf/scoop-bucket) to turn this on.
+    env:
+      BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+    if: ${{ vars.SCOOP_BUCKET_ENABLED == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write the manifest and push it to the bucket
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          ./packaging/render.sh scoop "$version" > aka.json
+          git clone "https://x-access-token:${BUCKET_TOKEN}@github.com/zeuslcf/scoop-bucket.git" bucket
+          mkdir -p bucket/bucket
+          cp aka.json bucket/bucket/aka.json
+          cd bucket
+          git config user.name "Zouhair Loucif"
+          git config user.email "26085706+zeuslcf@users.noreply.github.com"
+          git add bucket/aka.json
+          git commit -m "aka ${version}"
+          git push
+
+  winget:
+    name: Submit to winget
+    needs: release
+    runs-on: windows-latest
+    # The first version has to be submitted by hand (see packaging/README.md).
+    # After that, set WINGET_TOKEN and the WINGET_ENABLED variable to automate updates.
+    if: ${{ vars.WINGET_ENABLED == 'true' }}
+    steps:
+      - uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: zeuslcf.aka
+          installers-regex: '\.zip$'
+          token: ${{ secrets.WINGET_TOKEN }}
