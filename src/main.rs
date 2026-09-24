@@ -1,3 +1,4 @@
+mod args;
 mod cli;
 mod commands;
 mod config;

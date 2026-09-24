@@ -12,7 +12,7 @@ foreach ($__aka_n in @($global:__AKA_FUNCS)) {
     }
 }
 Remove-Variable -Name __aka_n -ErrorAction SilentlyContinue
-$global:__AKA_FUNCS = @('clean', 'g', 'gs', 'll', 'ls', 'say')
+$global:__AKA_FUNCS = @('clean', 'g', 'gs', 'll', 'ls', 'mkcd', 'say')
 
 Remove-Item -LiteralPath 'Alias:\clean' -Force -ErrorAction SilentlyContinue
 function global:clean {
@@ -28,10 +28,12 @@ Remove-Item -LiteralPath 'Alias:\ll' -Force -ErrorAction SilentlyContinue
 function global:ll { ls -la @args }
 Remove-Item -LiteralPath 'Alias:\ls' -Force -ErrorAction SilentlyContinue
 function global:ls { & (Get-Command -Name 'ls' -CommandType Application,Cmdlet | Select-Object -First 1) -G @args }
+Remove-Item -LiteralPath 'Alias:\mkcd' -Force -ErrorAction SilentlyContinue
+function global:mkcd { mkdir -p "$($args[0])" && cd "$($args[0])" }
 Remove-Item -LiteralPath 'Alias:\say' -Force -ErrorAction SilentlyContinue
 function global:say { echo 'it''s' @args }
 
-$global:__AkaExpand = @{ 'clean' = 'rm -rf build'; 'gs' = 'git status'; 'll' = 'ls -la'; 'say' = 'echo ''it''''s''' }
+$global:__AkaExpand = @{ 'clean' = 'rm -rf build'; 'gs' = 'git status'; 'll' = 'ls -la'; 'mkcd' = 'mkdir -p "$1" && cd "$1"'; 'say' = 'echo ''it''''s''' }
 $global:__AkaComplete = {
     param($wordToComplete, $commandAst, $cursorPosition)
     $name = $commandAst.GetCommandName()

@@ -464,6 +464,8 @@ fn prepared() -> Env {
     env.run(&["add", "hello", "echo hello-from-aka"]).success();
     env.run(&["add", "--confirm", "careful", "echo ran-careful"])
         .success();
+    env.run(&["add", "twice", "echo \"$1-$1\" count=$#"])
+        .success();
     env
 }
 
@@ -482,7 +484,7 @@ fn check_posix_shell(shell: &str, prelude: &str) {
     // zsh parses the whole -c script up front, so `eval` makes it expand
     // aliases defined along the way. bash reads a line at a time either way.
     let script = format!(
-        "{prelude}\nsource '{}'\neval hello\naka rm hello >/dev/null 2>&1\neval hello 2>/dev/null || echo gone\necho y | careful\necho n | careful || echo declined",
+        "{prelude}\nsource '{}'\neval hello\naka rm hello >/dev/null 2>&1\neval hello 2>/dev/null || echo gone\necho y | careful\necho n | careful || echo declined\neval twice hi there",
         init(&env, shell)
     );
     // Aliases only expand in interactive shells.
@@ -494,6 +496,10 @@ fn check_posix_shell(shell: &str, prelude: &str) {
     );
     assert!(out.contains("ran-careful"), "{shell} {prelude}: {out}");
     assert!(out.contains("declined"), "{shell} {prelude}: {out}");
+    assert!(
+        out.contains("hi-hi count=2"),
+        "{shell} {prelude}: arguments: {out}"
+    );
     assert!(
         !out.contains("unbound variable") && !out.contains("parameter not set"),
         "{shell} {prelude}: {out}"
@@ -527,10 +533,11 @@ fn works_in_fish() {
     }
     let env = prepared();
     let script = format!(
-        "source '{}'\nhello\naka rm hello >/dev/null 2>&1\nfunctions -q hello; or echo gone\necho y | careful\necho n | careful; or echo declined",
+        "source '{}'\nhello\naka rm hello >/dev/null 2>&1\nfunctions -q hello; or echo gone\necho y | careful\necho n | careful; or echo declined\ntwice hi there",
         init(&env, "fish")
     );
     let out = in_shell(&env, "fish", &["-c"], &script);
+    assert!(out.contains("hi-hi count=2"), "arguments: {out}");
     assert!(out.contains("hello-from-aka"), "{out}");
     assert!(out.contains("gone"), "{out}");
     assert!(out.contains("ran-careful"), "{out}");
@@ -552,7 +559,7 @@ fn works_in_powershell() {
     // re-source by hand to check removal.
     let init = init(&env, "ps1");
     let script = format!(
-        ". '{init}'; hello; aka rm hello *> $null; . '{init}'; if (-not (Get-Command hello -ErrorAction SilentlyContinue)) {{ 'gone' }}"
+        ". '{init}'; hello; twice hi there; aka rm hello *> $null; . '{init}'; if (-not (Get-Command hello -ErrorAction SilentlyContinue)) {{ 'gone' }}"
     );
     let out = in_shell(
         &env,
@@ -561,6 +568,7 @@ fn works_in_powershell() {
         &script,
     );
     assert!(out.contains("hello-from-aka"), "{out}");
+    assert!(out.contains("hi-hi count=2"), "arguments: {out}");
     assert!(out.contains("gone"), "{out}");
 }
 

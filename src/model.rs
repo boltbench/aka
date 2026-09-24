@@ -129,6 +129,11 @@ impl Alias {
         }
     }
 
+    /// Uses `$1`, `$@` and the like, so it has to be a function.
+    pub fn takes_args(&self) -> bool {
+        crate::args::uses_placeholders(&self.command)
+    }
+
     pub fn applies_to(&self, shell: Shell, os: Os) -> bool {
         self.enabled
             && (self.shells.is_empty() || self.shells.contains(&shell))
@@ -146,6 +151,9 @@ impl Alias {
         }
         if self.confirm {
             notes.push("asks first".to_string());
+        }
+        if self.takes_args() {
+            notes.push("takes arguments".to_string());
         }
         if !self.shells.is_empty() {
             notes.push(join(&self.shells, "/") + " only");

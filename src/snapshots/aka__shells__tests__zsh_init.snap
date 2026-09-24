@@ -9,7 +9,7 @@ for __aka_n in ${=__AKA_ALIASES-}; do unalias "$__aka_n" 2>/dev/null; done
 for __aka_n in ${=__AKA_FUNCS-}; do unfunction "$__aka_n" 2>/dev/null; done
 unset __aka_n
 __AKA_ALIASES='g gs ll ls say'
-__AKA_FUNCS='clean'
+__AKA_FUNCS='clean mkcd'
 
 alias g='git'
 alias gs='git status'
@@ -23,6 +23,10 @@ function clean {
   read -r __aka_r
   case "$__aka_r" in [yY]|[yY][eE][sS]) ;; *) return 1 ;; esac
   rm -rf build "$@"
+}
+unalias mkcd 2>/dev/null
+function mkcd {
+  mkdir -p "$1" && cd "$1"
 }
 
 function aka {
@@ -70,7 +74,8 @@ function _clap_dynamic_completer_aka() {
 
 compdef _clap_dynamic_completer_aka aka
 compdef clean=rm
-__aka_descs=('clean:rm -rf build' 'g:git' 'gs:quick status' 'll:ls -la' 'ls:ls -G' 'say:echo '\''it'\'''\''s'\''')
+compdef mkcd=mkdir
+__aka_descs=('clean:rm -rf build' 'g:git' 'gs:quick status' 'll:ls -la' 'ls:ls -G' 'mkcd:mkdir -p "$1" && cd "$1"' 'say:echo '\''it'\'''\''s'\''')
 if [[ ${_comps[-command-]} != _aka_command ]]; then
   __aka_command_prev=${_comps[-command-]:-_command_names}
 fi

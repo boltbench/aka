@@ -9,7 +9,7 @@ for __aka_n in $__AKA_FUNCS
     functions --erase -- $__aka_n
 end
 set --erase __aka_n
-set --global __AKA_FUNCS 'clean' 'fsh' 'g' 'gs' 'll' 'ls' 'say'
+set --global __AKA_FUNCS 'clean' 'fsh' 'g' 'gs' 'll' 'ls' 'mkcd' 'say'
 
 function clean --wraps 'rm -rf build' --description 'rm -rf build'
     read --prompt-str 'aka: run `rm -rf build`? [y/N] ' --local __aka_r
@@ -33,6 +33,9 @@ function ll --wraps 'ls -la' --description 'ls -la'
 end
 function ls --description 'ls -G'
     command ls -G $argv
+end
+function mkcd --wraps 'mkdir' --description 'mkdir -p "$1" && cd "$1"'
+    mkdir -p "$argv[1]" && cd "$argv[1]"
 end
 function say --wraps 'echo \'it\'\'s\'' --description 'echo \'it\'\'s\''
     echo 'it''s' $argv

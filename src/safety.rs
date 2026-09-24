@@ -274,6 +274,8 @@ pub fn danger(command: &str) -> Vec<&'static str> {
 /// passed to each shell as written, so bash/zsh syntax breaks in PowerShell
 /// and PowerShell syntax breaks everywhere else. These are hints, not proof.
 pub fn syntax_issues(command: &str) -> Vec<(Shell, &'static str)> {
+    // Argument placeholders get translated for each shell, so they don't count.
+    let command = &crate::args::without_placeholders(command);
     let mut issues = Vec::new();
     let words: Vec<&str> = command.split_whitespace().collect();
     let heads = heads(command, false);

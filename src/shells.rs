@@ -14,6 +14,7 @@ use std::path::Path;
 use anyhow::Result;
 use clap_complete::env::EnvCompleter;
 
+use crate::args::{Style, translate};
 use crate::model::{Alias, Os, Shell, State};
 use crate::paths::Paths;
 use crate::{safety, store};
@@ -115,9 +116,18 @@ fn registration(completer: &dyn EnvCompleter, rc: &RenderCtx) -> String {
     String::from_utf8_lossy(&buf).trim().to_string()
 }
 
-/// A function body that calls `command`, passing the alias's arguments along.
-fn body(name: &str, command: &str, args: &str, self_call: &str) -> String {
-    format!("{} {args}", guard_self_calls(name, command, self_call))
+/// A function body that runs the alias's command. Arguments are passed along
+/// at the end with `args`, unless the command places them itself with `$1` and
+/// friends, which get translated for the shell.
+fn body(name: &str, alias: &Alias, args: &str, self_call: &str, style: Style) -> String {
+    if alias.takes_args() {
+        guard_self_calls(name, &translate(&alias.command, style), self_call)
+    } else {
+        format!(
+            "{} {args}",
+            guard_self_calls(name, &alias.command, self_call)
+        )
+    }
 }
 
 /// Replaces every spot where the command calls the alias's own name (the first
@@ -197,7 +207,7 @@ fn bash(out: &mut String, entries: &[(&str, &Alias)], rc: &RenderCtx) {
         let _ = writeln!(out, "alias {name}={}", sh_quote(&alias.command));
     }
     for (name, alias) in &funcs {
-        posix_confirm_function(out, name, alias);
+        posix_function(out, name, alias);
     }
 
     let _ = write!(
@@ -288,7 +298,7 @@ fn zsh(out: &mut String, entries: &[(&str, &Alias)], rc: &RenderCtx) {
         let _ = writeln!(out, "alias {name}={}", sh_quote(&alias.command));
     }
     for (name, alias) in &funcs {
-        posix_confirm_function(out, name, alias);
+        posix_function(out, name, alias);
     }
 
     let _ = write!(
@@ -334,19 +344,29 @@ compdef _aka_command -command-
 zstyle ':completion:*:-command-:*:aliases' ignored-patterns ${=__AKA_ALIASES}
 "#;
 
-fn posix_confirm_function(out: &mut String, name: &str, alias: &Alias) {
-    let _ = write!(
+/// A bash/zsh function, for aliases that ask before running or take arguments.
+fn posix_function(out: &mut String, name: &str, alias: &Alias) {
+    let _ = writeln!(out, "unalias {name} 2>/dev/null\nfunction {name} {{");
+    if alias.confirm {
+        let _ = write!(
+            out,
+            "  printf '%s' {} >&2\n  \
+               local __aka_r\n  \
+               read -r __aka_r\n  \
+               case \"$__aka_r\" in [yY]|[yY][eE][sS]) ;; *) return 1 ;; esac\n",
+            sh_quote(&confirm_question(&alias.command))
+        );
+    }
+    let _ = writeln!(
         out,
-        "unalias {name} 2>/dev/null\n\
-         function {name} {{\n  \
-           printf '%s' {question} >&2\n  \
-           local __aka_r\n  \
-           read -r __aka_r\n  \
-           case \"$__aka_r\" in [yY]|[yY][eE][sS]) ;; *) return 1 ;; esac\n  \
-           {body}\n\
-         }}\n",
-        question = sh_quote(&confirm_question(&alias.command)),
-        body = body(name, &alias.command, "\"$@\"", &format!("command {name}")),
+        "  {}\n}}",
+        body(
+            name,
+            alias,
+            "\"$@\"",
+            &format!("command {name}"),
+            Style::Posix
+        )
     );
 }
 
@@ -373,7 +393,18 @@ fn fish(out: &mut String, entries: &[(&str, &Alias)], rc: &RenderCtx) {
         // `--wraps` gives the function the wrapped command's completions. Skip it for
         // `ls='ls -G'` style aliases, where fish would complete the function with itself.
         if !safety::is_wrapper(name, &alias.command) {
-            let _ = write!(out, " --wraps {}", fish_quote(&alias.command));
+            // An alias with arguments completes like the program it starts with.
+            let wraps = if alias.takes_args() {
+                safety::first_words(&alias.command)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default()
+            } else {
+                alias.command.clone()
+            };
+            if !wraps.is_empty() {
+                let _ = write!(out, " --wraps {}", fish_quote(&wraps));
+            }
         }
         let _ = writeln!(out, " --description {}", fish_quote(&description));
         if alias.confirm {
@@ -387,7 +418,13 @@ fn fish(out: &mut String, entries: &[(&str, &Alias)], rc: &RenderCtx) {
         let _ = writeln!(
             out,
             "    {}\nend",
-            body(name, &alias.command, "$argv", &format!("command {name}"))
+            body(
+                name,
+                alias,
+                "$argv",
+                &format!("command {name}"),
+                Style::Fish
+            )
         );
     }
 
@@ -433,7 +470,11 @@ fn powershell(out: &mut String, entries: &[(&str, &Alias)], rc: &RenderCtx) {
             ps_quote(&format!("Alias:\\{name}"))
         );
         let command = alias.command.trim();
-        if !alias.confirm && !command.contains(char::is_whitespace) && command != *name {
+        if !alias.confirm
+            && !alias.takes_args()
+            && !command.contains(char::is_whitespace)
+            && command != *name
+        {
             let _ = writeln!(
                 out,
                 "Set-Alias -Name {} -Value {} -Scope Global -Force",
@@ -449,12 +490,13 @@ fn powershell(out: &mut String, entries: &[(&str, &Alias)], rc: &RenderCtx) {
         }
         let call = body(
             name,
-            &alias.command,
+            alias,
             "@args",
             &format!(
                 "& (Get-Command -Name {} -CommandType Application,Cmdlet | Select-Object -First 1)",
                 ps_quote(name)
             ),
+            Style::Powershell,
         );
         if alias.confirm {
             let _ = write!(
@@ -518,12 +560,15 @@ Remove-Variable -Name __aka_n -ErrorAction SilentlyContinue
 
 // ---------------------------------------------------------------- helpers
 
-/// Aliases that must be functions (they ask before running) versus plain aliases.
+/// Aliases that must be functions (they ask before running, or take
+/// arguments) versus plain aliases.
 #[allow(clippy::type_complexity)]
 fn split<'a>(
     entries: &[(&'a str, &'a Alias)],
 ) -> (Vec<(&'a str, &'a Alias)>, Vec<(&'a str, &'a Alias)>) {
-    entries.iter().partition(|(_, a)| a.confirm)
+    entries
+        .iter()
+        .partition(|(_, a)| a.confirm || a.takes_args())
 }
 
 fn names(entries: &[(&str, &Alias)]) -> String {
@@ -567,6 +612,7 @@ mod tests {
         state.insert("gs", gs);
         state.insert("ll", Alias::new("ls -la"));
         state.insert("g", Alias::new("git"));
+        state.insert("mkcd", Alias::new("mkdir -p \"$1\" && cd \"$1\""));
         state.insert("ls", Alias::new("ls -G"));
         state.insert("say", Alias::new("echo 'it''s'"));
         let mut clean = Alias::new("rm -rf build");
