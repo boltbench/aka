@@ -190,7 +190,7 @@ aka config unset zsh.compinit           # back to the default
 
 ## Shell notes
 
-- **PowerShell** can't pass arguments through `Set-Alias`, so A.K.A uses real aliases for one-word commands (`g` → `git`) and small functions for everything else. Built-in aliases with the same name (like `gp` or `ls`) are replaced for the session. If a prompt tool like starship or oh-my-posh loads after aka's block, new aliases only show up in new windows; `aka doctor` spots this and `aka setup` moves the block.
+- **PowerShell** can't pass arguments through `Set-Alias`, so A.K.A defines each alias as a small function, and Tab still completes like the command it runs. Built-in aliases with the same name (like `gp` or `ls`) are replaced for the session. If a prompt tool like starship or oh-my-posh loads after aka's block, new aliases only show up in new windows; `aka doctor` spots this and `aka setup` moves the block.
 - **Commands run in the shell that uses them.** An alias like `ls -la` means something different in PowerShell. A.K.A warns when a command looks like it only works in some shells, and `--shell` limits an alias to the shells where it makes sense. `aka import` does this for you automatically.
 - **zsh tab completion** needs zsh's completion system (`compinit`). Frameworks like oh-my-zsh turn it on for you, but a plain `.zshrc` often doesn't. `aka setup` checks, and if it's off, offers to turn it on inside aka's own block, along with Homebrew's completion folder on macOS. `aka uninstall` takes it away again, and `aka setup --no-completion` skips it.
 
