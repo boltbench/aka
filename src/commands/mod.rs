@@ -87,10 +87,7 @@ fn suggest_cmd(ctx: &Ctx, limit: usize, min_count: usize) -> Result<()> {
     }
     ui::print(table.to_string());
 
-    let Some(answer) = prompt::ask(
-        "Add which? Numbers like `1 3`, `2=dcu` to pick the name, `all`, or Enter to skip:",
-    )?
-    else {
+    let Some(answer) = prompt::ask("Add which? (`1 3`, `2=name`, `all`, Enter to skip)")? else {
         return Ok(());
     };
     let picks = parse_picks(&answer, found.len())?;

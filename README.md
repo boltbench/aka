@@ -137,7 +137,7 @@ $ aka suggest
  #  USED  COMMAND                NAME
  1  42    git status -sb         gss
  2  17    docker compose up -d   dcud
-Add which? Numbers like `1 3`, `2=dcu` to pick the name, `all`, or Enter to skip:
+Add which? (`1 3`, `2=name`, `all`, Enter to skip)
 ```
 
 It reads your zsh, bash, fish and PowerShell history on your machine, only reads it, and skips anything that looks like it contains a password or token.
