@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 122 530 218" width="265" height="109" role="img" aria-label="a.k.a">
+  <!-- For light backgrounds. The dark version is aka-wordmark-dark.svg. -->
+  <defs>
+    <linearGradient id="dot" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7C3AED"/>
+      <stop offset="1" stop-color="#0891B2"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="#0F172A" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="63" cy="270" r="46"/>
+    <line x1="109" y1="224" x2="109" y2="316"/>
+    <line x1="229" y1="146" x2="229" y2="316"/>
+    <line x1="229" y1="290" x2="287" y2="224"/>
+    <line x1="253" y1="263" x2="289" y2="316"/>
+    <circle cx="453" cy="270" r="46"/>
+    <line x1="499" y1="224" x2="499" y2="316"/>
+  </g>
+  <circle cx="169" cy="312" r="21" fill="url(#dot)"/>
+  <circle cx="347" cy="312" r="21" fill="url(#dot)"/>
+</svg>

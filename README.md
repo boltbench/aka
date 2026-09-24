@@ -1,8 +1,17 @@
-# A.K.A (also known as)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/aka-wordmark-dark.svg">
+    <img alt="a.k.a" src="docs/brand/aka-wordmark-light.svg" width="240">
+  </picture>
+</p>
 
-[![CI](https://github.com/boltbench/aka/actions/workflows/ci.yml/badge.svg)](https://github.com/boltbench/aka/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/boltbench/aka)](https://github.com/boltbench/aka/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<p align="center"><b>Also known as: your shell aliases, in one place.</b></p>
+
+<p align="center">
+  <a href="https://github.com/boltbench/aka/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/boltbench/aka/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/boltbench/aka/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/boltbench/aka"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+</p>
 
 Manage your shell aliases from one place.
 

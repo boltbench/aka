@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="a.k.a">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1C1747"/>
+      <stop offset="1" stop-color="#0A0E1C"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.22" cy="0.12" r="0.8">
+      <stop offset="0" stop-color="#8B5CF6" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="dot" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#C4B5FD"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.02"/>
+    </linearGradient>
+    <filter id="dotglow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="0" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="0" fill="url(#glow)"/>
+
+  <!-- a.k.a, drawn from strokes so it never depends on a font -->
+  <g transform="translate(65 91) scale(0.74)">
+    <!-- soft glow under the dots -->
+    <g fill="#8B5CF6" opacity="0.55" filter="url(#dotglow)">
+      <circle cx="169" cy="312" r="21"/>
+      <circle cx="347" cy="312" r="21"/>
+    </g>
+    <g fill="none" stroke="#F8FAFC" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
+      <!-- a -->
+      <circle cx="63" cy="270" r="46"/>
+      <line x1="109" y1="224" x2="109" y2="316"/>
+      <!-- k -->
+      <line x1="229" y1="146" x2="229" y2="316"/>
+      <line x1="229" y1="290" x2="287" y2="224"/>
+      <line x1="253" y1="263" x2="289" y2="316"/>
+      <!-- a -->
+      <circle cx="453" cy="270" r="46"/>
+      <line x1="499" y1="224" x2="499" y2="316"/>
+    </g>
+    <!-- the dots -->
+    <circle cx="169" cy="312" r="21" fill="url(#dot)"/>
+    <circle cx="347" cy="312" r="21" fill="url(#dot)"/>
+  </g>
+</svg>

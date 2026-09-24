@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-label="a.k.a: your shell aliases, in one place">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1C1747"/><stop offset="1" stop-color="#0A0E1C"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.05" r="0.75">
+      <stop offset="0" stop-color="#8B5CF6" stop-opacity="0.38"/><stop offset="1" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="dot" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#C4B5FD"/><stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <filter id="dotglow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="9"/></filter>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1.5" fill="#FFFFFF" fill-opacity="0.07"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#grid)"/>
+  <rect width="1280" height="640" fill="url(#glow)"/>
+  
+  <g transform="translate(480 62) scale(0.62)">
+    <g fill="#8B5CF6" opacity="0.55" filter="url(#dotglow)">
+      <circle cx="169" cy="312" r="21"/><circle cx="347" cy="312" r="21"/>
+    </g>
+    <g fill="none" stroke="#F8FAFC" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="63" cy="270" r="46"/><line x1="109" y1="224" x2="109" y2="316"/>
+      <line x1="229" y1="146" x2="229" y2="316"/><line x1="229" y1="290" x2="287" y2="224"/>
+      <line x1="253" y1="263" x2="289" y2="316"/>
+      <circle cx="453" cy="270" r="46"/><line x1="499" y1="224" x2="499" y2="316"/>
+    </g>
+    <circle cx="169" cy="312" r="21" fill="url(#dot)"/><circle cx="347" cy="312" r="21" fill="url(#dot)"/>
+  </g>
+  <g font-family="'SF Pro Display', Inter, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+    <text x="640" y="326" text-anchor="middle" font-size="21" font-weight="600" letter-spacing="7" fill="#A78BFA">ALSO KNOWN AS</text>
+    <text x="640" y="396" text-anchor="middle" font-size="50" font-weight="600" fill="#F8FAFC">Your shell aliases, in one place.</text>
+    <rect x="418.0" y="444" width="84" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.14"/><text x="460.0" y="472" text-anchor="middle" font-size="21" fill="#CBD5E1">bash</text>
+    <rect x="518.0" y="444" width="72" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.14"/><text x="554.0" y="472" text-anchor="middle" font-size="21" fill="#CBD5E1">zsh</text>
+    <rect x="606.0" y="444" width="84" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.14"/><text x="648.0" y="472" text-anchor="middle" font-size="21" fill="#CBD5E1">fish</text>
+    <rect x="706.0" y="444" width="156" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.14"/><text x="784.0" y="472" text-anchor="middle" font-size="21" fill="#CBD5E1">PowerShell</text>
+    
+    <text x="640" y="580" text-anchor="middle" font-size="20" fill="#64748B">github.com/boltbench/aka</text>
+  </g>
+</svg>
