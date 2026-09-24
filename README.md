@@ -1,7 +1,7 @@
 # A.K.A (also known as)
 
-[![CI](https://github.com/zeuslcf/aka/actions/workflows/ci.yml/badge.svg)](https://github.com/zeuslcf/aka/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/zeuslcf/aka)](https://github.com/zeuslcf/aka/releases/latest)
+[![CI](https://github.com/boltbench/aka/actions/workflows/ci.yml/badge.svg)](https://github.com/boltbench/aka/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/boltbench/aka)](https://github.com/boltbench/aka/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Manage your shell aliases from one place.
@@ -43,19 +43,19 @@ A.K.A keeps every alias in one file and turns it into the right syntax for each 
 **macOS and Linux**
 
 ```sh
-curl -fsSL https://github.com/zeuslcf/aka/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/boltbench/aka/releases/latest/download/install.sh | sh
 ```
 
 **Windows (PowerShell)**
 
 ```powershell
-irm https://github.com/zeuslcf/aka/releases/latest/download/install.ps1 | iex
+irm https://github.com/boltbench/aka/releases/latest/download/install.ps1 | iex
 ```
 
-Both scripts download the right binary for your system, check its checksum, and install it (to `~/.local/bin`, or `%LOCALAPPDATA%\Programs\aka` on Windows). You can also grab a binary from the [releases page](https://github.com/zeuslcf/aka/releases), or build from source with Rust:
+Both scripts download the right binary for your system, check its checksum, and install it (to `~/.local/bin`, or `%LOCALAPPDATA%\Programs\aka` on Windows). You can also grab a binary from the [releases page](https://github.com/boltbench/aka/releases), or build from source with Rust:
 
 ```sh
-cargo install --git https://github.com/zeuslcf/aka
+cargo install --git https://github.com/boltbench/aka
 ```
 
 Then hook it into your shells, once:

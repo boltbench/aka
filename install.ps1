@@ -1,13 +1,13 @@
 # Installs aka on Windows.
 #
-#   irm https://github.com/zeuslcf/aka/releases/latest/download/install.ps1 | iex
+#   irm https://github.com/boltbench/aka/releases/latest/download/install.ps1 | iex
 #
 # Settings (all optional):
 #   $env:AKA_VERSION       version to install, like 0.1.0 (default: the latest)
 #   $env:AKA_INSTALL_DIR   where aka.exe goes (default: %LOCALAPPDATA%\Programs\aka)
 
 $ErrorActionPreference = 'Stop'
-$repo = 'zeuslcf/aka'
+$repo = 'boltbench/aka'
 
 $installDir = if ($env:AKA_INSTALL_DIR) { $env:AKA_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\aka' }
 

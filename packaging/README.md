@@ -13,11 +13,11 @@
 The release includes `install.sh`, `install.ps1` and a `checksums.txt`, so these work straight away:
 
 ```sh
-curl -fsSL https://github.com/zeuslcf/aka/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/boltbench/aka/releases/latest/download/install.sh | sh
 ```
 
 ```powershell
-irm https://github.com/zeuslcf/aka/releases/latest/download/install.ps1 | iex
+irm https://github.com/boltbench/aka/releases/latest/download/install.ps1 | iex
 ```
 
 ## Package managers
@@ -26,24 +26,24 @@ These are off until you set them up once. Each one only needs a repository and a
 
 ### Homebrew
 
-1. Create a public repo called `zeuslcf/homebrew-tap`.
+1. Create a public repo called `boltbench/homebrew-tap`.
 2. Create a fine-grained token with write access to that repo only, and add it to this repo as the secret `HOMEBREW_TAP_TOKEN`.
 3. Add the repository variable `HOMEBREW_TAP_ENABLED` = `true`.
 
 Every release then updates `Formula/aka.rb`, and people install with:
 
 ```sh
-brew install zeuslcf/tap/aka
+brew install boltbench/tap/aka
 ```
 
 ### Scoop
 
-1. Create a public repo called `zeuslcf/scoop-bucket`.
+1. Create a public repo called `boltbench/scoop-bucket`.
 2. Add a token with write access to it as the secret `SCOOP_BUCKET_TOKEN`.
 3. Add the repository variable `SCOOP_BUCKET_ENABLED` = `true`.
 
 ```powershell
-scoop bucket add zeuslcf https://github.com/zeuslcf/scoop-bucket
+scoop bucket add boltbench https://github.com/boltbench/scoop-bucket
 scoop install aka
 ```
 
@@ -53,10 +53,10 @@ The first version has to go in by hand, since the winget maintainers review new 
 
 ```powershell
 winget install wingetcreate
-wingetcreate new https://github.com/zeuslcf/aka/releases/download/v0.1.0/aka-v0.1.0-x86_64-pc-windows-msvc.zip
+wingetcreate new https://github.com/boltbench/aka/releases/download/v0.1.0/aka-v0.1.0-x86_64-pc-windows-msvc.zip
 ```
 
-Use `zeuslcf.aka` as the package identifier. Once it's accepted, add a classic token with `public_repo` scope as the secret `WINGET_TOKEN` and set the variable `WINGET_ENABLED` = `true`. Later releases are then submitted automatically.
+Use `boltbench.aka` as the package identifier. Once it's accepted, add a classic token with `public_repo` scope as the secret `WINGET_TOKEN` and set the variable `WINGET_ENABLED` = `true`. Later releases are then submitted automatically.
 
 ## Checking the packaging locally
 

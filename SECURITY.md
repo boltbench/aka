@@ -5,7 +5,7 @@ aka edits your shell profiles and writes files your shell runs on every start, s
 ## Reporting a problem
 
 Please don't open a public issue. Use GitHub's private reporting instead:
-[report a vulnerability](https://github.com/zeuslcf/aka/security/advisories/new).
+[report a vulnerability](https://github.com/boltbench/aka/security/advisories/new).
 
 Include what you found, how to reproduce it, and what someone could do with it. I'll reply as soon as I can, usually within a week, and keep you posted until it's fixed.
 

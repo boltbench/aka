@@ -10,7 +10,7 @@ set -eu
 
 kind="${1:?usage: render.sh homebrew|scoop <version>}"
 version="${2:?usage: render.sh homebrew|scoop <version>}"
-repo="zeuslcf/aka"
+repo="boltbench/aka"
 base="https://github.com/${repo}/releases/download/v${version}"
 
 case "$kind" in

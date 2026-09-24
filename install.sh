@@ -1,14 +1,14 @@
 #!/bin/sh
 # Installs aka on macOS or Linux.
 #
-#   curl -fsSL https://github.com/zeuslcf/aka/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/boltbench/aka/releases/latest/download/install.sh | sh
 #
 # Settings (all optional):
 #   AKA_VERSION       version to install, like 0.1.0 (default: the latest)
 #   AKA_INSTALL_DIR   where the binary goes (default: ~/.local/bin)
 set -eu
 
-repo="zeuslcf/aka"
+repo="boltbench/aka"
 install_dir="${AKA_INSTALL_DIR:-$HOME/.local/bin}"
 
 say() { printf '%s\n' "$*"; }
