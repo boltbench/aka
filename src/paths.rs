@@ -40,6 +40,10 @@ impl Paths {
         self.root.join("aliases.toml")
     }
 
+    pub fn config_file(&self) -> PathBuf {
+        self.root.join("config.toml")
+    }
+
     pub fn trash_file(&self) -> PathBuf {
         self.root.join("trash.toml")
     }

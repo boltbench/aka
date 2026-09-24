@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 
+use crate::config::{self, Compinit};
 use crate::context::Ctx;
 use crate::model::{Os, Shell};
 use crate::paths::Paths;
@@ -150,24 +151,29 @@ fn escape_dq(s: &str, special: &[char], escape: char) -> String {
 }
 
 pub fn block(shell: Shell, paths: &Paths) -> String {
-    block_with(shell, paths, false)
+    block_with(shell, paths, None)
 }
 
 /// The block, optionally also turning on zsh's tab completion. That part sits
 /// before the hook line so aka's completions can register, and it lives inside
 /// the block so `aka uninstall` takes it away again.
-pub fn block_with(shell: Shell, paths: &Paths, zsh_completion: bool) -> String {
+pub fn block_with(shell: Shell, paths: &Paths, zsh_completion: Option<Compinit>) -> String {
     let mut body = String::from(
         "# Loads your aliases. Added by `aka setup`, remove it with `aka uninstall`.\n",
     );
-    if shell == Shell::Zsh && zsh_completion {
+    if shell == Shell::Zsh
+        && let Some(mode) = zsh_completion
+    {
         body.push_str("# zsh tab completion was off, so aka turned it on.\n");
         for dir in HOMEBREW_ZSH_COMPLETIONS {
             if Path::new(dir).is_dir() {
                 body.push_str(&format!("[[ -d {dir} ]] && fpath=({dir} $fpath)\n"));
             }
         }
-        body.push_str(COMPINIT_LINE);
+        body.push_str(match mode {
+            Compinit::Full => COMPINIT_LINE,
+            Compinit::Cached => COMPINIT_CACHED,
+        });
         body.push('\n');
     }
     format!("{START}\n{body}{}\n{END}\n", hook_line(shell, paths))
@@ -176,6 +182,13 @@ pub fn block_with(shell: Shell, paths: &Paths, zsh_completion: bool) -> String {
 /// `-i` skips directories compaudit considers insecure instead of stopping the
 /// shell at startup to ask about them.
 const COMPINIT_LINE: &str = "autoload -Uz compinit && compinit -i";
+
+/// `aka config set zsh.compinit cached`: trusts the cached completion list
+/// (`compinit -C`) and only checks for new completions when the cache is over
+/// a day old. `touch` marks it checked, since compinit leaves an unchanged
+/// cache alone and it would otherwise look stale forever.
+const COMPINIT_CACHED: &str = "autoload -Uz compinit\n\
+() { if [[ $# -gt 0 ]]; then compinit -i && touch -- $1; else compinit -C -i; fi } ${ZDOTDIR:-$HOME}/.zcompdump(N.mh+24)";
 
 /// Where Homebrew puts zsh completions for the tools it installs. macOS's own
 /// zsh doesn't look there, so `brew`, `gh` and friends wouldn't complete.
@@ -203,7 +216,9 @@ pub fn zsh_completion(paths: &Paths) -> ZshCompletion {
         .filter_map(|p| fs::read_to_string(p).ok())
         .collect();
     if texts.iter().any(|t| {
-        split_block(t).is_some_and(|(before, _)| t[before.len()..].contains(COMPINIT_LINE))
+        split_block(t).is_some_and(|(before, after)| {
+            t[before.len()..t.len() - after.len()].contains("compinit")
+        })
     }) {
         return ZshCompletion::OnByAka;
     }
@@ -272,6 +287,37 @@ fn mentions_completion_setup(text: &str) -> bool {
     text.lines()
         .filter(|l| !l.trim_start().starts_with('#'))
         .any(|l| MARKERS.iter().any(|m| l.contains(m)))
+}
+
+/// Rewrites the zsh block after `zsh.compinit` changes, if aka is the one
+/// turning completion on. Otherwise there's nothing of aka's to change.
+pub fn refresh_zsh_block(ctx: &Ctx) -> Result<()> {
+    if zsh_completion(&ctx.paths) != ZshCompletion::OnByAka {
+        ui::hint(
+            "This only matters when `aka setup` turned on zsh completion, which it hasn't here.",
+        );
+        return Ok(());
+    }
+    let mode = config::load(&ctx.paths)?.zsh.compinit;
+    for profile in hook_profiles(Shell::Zsh, &ctx.paths) {
+        let Ok(old) = fs::read_to_string(&profile) else {
+            continue;
+        };
+        if !has_hook(&old) {
+            continue;
+        }
+        let new = insert_hook(&old, &block_with(Shell::Zsh, &ctx.paths, Some(mode)));
+        if new != old {
+            store::backup_profile(&ctx.paths, &profile)?;
+            write_profile(&profile, &new)?;
+            ui::ok(format!(
+                "Updated the aka block in {}",
+                ctx.paths.pretty(&profile)
+            ));
+            ui::hint("Open a new terminal for it to take effect.");
+        }
+    }
+    Ok(())
 }
 
 /// Decides whether the zsh block should turn completion on: keep it if aka
@@ -372,7 +418,9 @@ pub fn setup(ctx: &Ctx, shells: Vec<Shell>, no_completion: bool) -> Result<()> {
         bail!("couldn't find bash, zsh, fish or PowerShell. Pick one with --shell");
     }
 
-    let zsh_completion = chosen.contains(&Shell::Zsh) && want_zsh_completion(ctx, no_completion)?;
+    let zsh_completion = (chosen.contains(&Shell::Zsh) && want_zsh_completion(ctx, no_completion)?)
+        .then(|| config::load(&ctx.paths).map(|c| c.zsh.compinit))
+        .transpose()?;
 
     let mut pending = Vec::new();
     for &shell in &chosen {
@@ -601,16 +649,17 @@ mod tests {
             root: PathBuf::from("/home/me/.config/aka"),
             home: PathBuf::from("/home/me"),
         };
-        let with = block_with(Shell::Zsh, &paths, true);
+        let with = block_with(Shell::Zsh, &paths, Some(Compinit::Full));
         let compinit = with.find(COMPINIT_LINE).expect("compinit line");
         let hook = with.find("init.zsh").unwrap();
         assert!(
             compinit < hook,
             "completion must be on before aka registers its completions"
         );
-        assert!(!block_with(Shell::Zsh, &paths, false).contains("compinit"));
+        assert!(!block_with(Shell::Zsh, &paths, None).contains("compinit"));
+        assert!(block_with(Shell::Zsh, &paths, Some(Compinit::Cached)).contains("compinit -C -i"));
         // only zsh gets it
-        assert!(!block_with(Shell::Bash, &paths, true).contains("compinit"));
+        assert!(!block_with(Shell::Bash, &paths, Some(Compinit::Full)).contains("compinit"));
     }
 
     #[test]

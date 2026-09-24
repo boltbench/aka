@@ -160,6 +160,41 @@ pub enum Command {
 
     /// Check that everything is set up and healthy
     Doctor,
+
+    /// Show or change settings
+    Config {
+        #[command(subcommand)]
+        action: Option<ConfigAction>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigAction {
+    /// Print one setting
+    Get {
+        #[arg(add = setting_keys())]
+        key: String,
+    },
+    /// Change a setting
+    Set {
+        #[arg(add = setting_keys())]
+        key: String,
+        value: String,
+    },
+    /// Put a setting back to its default
+    Unset {
+        #[arg(add = setting_keys())]
+        key: String,
+    },
+}
+
+fn setting_keys() -> ArgValueCandidates {
+    ArgValueCandidates::new(|| {
+        crate::config::SETTINGS
+            .iter()
+            .map(|s| CompletionCandidate::new(s.key).help(Some(s.values.join(" | ").into())))
+            .collect()
+    })
 }
 
 #[derive(Debug, Args)]

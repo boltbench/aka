@@ -418,9 +418,24 @@ fn bin_dir() -> PathBuf {
         .to_path_buf()
 }
 
-/// bash, zsh and fish tests only run on Unix. On Windows `bash` may well be WSL's.
+/// Whether a real-shell test can run. bash, zsh and fish tests only run on
+/// Unix (on Windows `bash` may well be WSL's). A missing shell is reported as
+/// skipped, and in CI it's a failure, since CI installs every shell and a
+/// silent skip there would hide a broken test.
 fn has(shell: &str) -> bool {
-    cfg!(unix) && which::which(shell).is_ok()
+    let unix_only = shell != "pwsh";
+    if unix_only && !cfg!(unix) {
+        eprintln!("skipped: {shell} tests only run on Unix");
+        return false;
+    }
+    if which::which(shell).is_ok() {
+        return true;
+    }
+    if std::env::var_os("CI").is_some() {
+        panic!("{shell} isn't installed, but CI should have it");
+    }
+    eprintln!("skipped: {shell} isn't installed");
+    false
 }
 
 /// Runs a script in `shell` with aka on PATH and the test's HOME.
@@ -514,10 +529,11 @@ fn works_in_fish() {
 
 #[test]
 fn works_in_powershell() {
-    let shell = if which::which("pwsh").is_ok() {
-        "pwsh"
-    } else if cfg!(windows) {
+    // Windows always has Windows PowerShell; elsewhere it's pwsh or nothing.
+    let shell = if cfg!(windows) && which::which("pwsh").is_err() {
         "powershell"
+    } else if has("pwsh") {
+        "pwsh"
     } else {
         return;
     };
@@ -740,4 +756,64 @@ fn locks_hold_for_every_command() {
         .failure()
         .stderr(predicate::str::contains("locked"));
     env.run(&["rm", "-f", "gs"]).success();
+}
+
+#[test]
+fn config_switches_zsh_compinit_mode() {
+    let env = Env::new();
+    env.run(&["config"])
+        .success()
+        .stdout(predicate::str::contains("zsh.compinit = full (default)"));
+    env.run(&["config", "set", "zsh.compinit", "fast"])
+        .failure()
+        .stderr(predicate::str::contains("full or cached"));
+    env.run(&["config", "get", "nope"]).failure();
+
+    let zshrc = env.home().join(".zshrc");
+    fs::write(&zshrc, "export A=1\n").unwrap();
+    env.run(&["setup", "-y", "--shell", "zsh"]).success();
+    assert!(
+        fs::read_to_string(&zshrc)
+            .unwrap()
+            .contains("compinit -i\n")
+    );
+
+    env.run(&["config", "set", "zsh.compinit", "cached"])
+        .success()
+        .stderr(predicate::str::contains("Updated the aka block"));
+    env.run(&["config", "get", "zsh.compinit"])
+        .success()
+        .stdout("cached\n");
+    assert!(
+        fs::read_to_string(&zshrc)
+            .unwrap()
+            .contains("compinit -C -i")
+    );
+    // setup again keeps the chosen mode
+    env.run(&["setup", "-y", "--shell", "zsh"])
+        .success()
+        .stderr(predicate::str::contains("already set up"));
+
+    env.run(&["config", "unset", "zsh.compinit"]).success();
+    let text = fs::read_to_string(&zshrc).unwrap();
+    assert!(text.contains("compinit -i\n") && !text.contains("compinit -C"));
+    assert!(
+        !env.root().join("config.toml").exists(),
+        "all defaults means no config file"
+    );
+
+    env.run(&["uninstall", "-y", "--shell", "zsh"]).success();
+    assert_eq!(fs::read_to_string(&zshrc).unwrap(), "export A=1\n");
+}
+
+#[test]
+fn setup_can_skip_zsh_completion() {
+    let env = Env::new();
+    env.run(&["setup", "-y", "--no-completion", "--shell", "zsh"])
+        .success();
+    assert!(
+        !fs::read_to_string(env.home().join(".zshrc"))
+            .unwrap()
+            .contains("compinit")
+    );
 }

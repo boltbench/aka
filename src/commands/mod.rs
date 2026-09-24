@@ -4,11 +4,11 @@ pub mod manage;
 
 use anyhow::Result;
 
-use crate::cli::{Cli, Command, Format, ListArgs};
+use crate::cli::{Cli, Command, ConfigAction, Format, ListArgs};
 use crate::context::Ctx;
 use crate::model::{Alias, State};
 use crate::paths::Paths;
-use crate::{import, setup, shells, store, ui};
+use crate::{config, import, setup, shells, store, ui};
 
 pub fn run(cli: Cli) -> Result<()> {
     let ctx = Ctx {
@@ -46,6 +46,49 @@ fn default_view(ctx: &Ctx) -> Result<()> {
         },
     )?;
     ui::hint("Run `aka --help` to see every command.");
+    Ok(())
+}
+
+fn config_cmd(ctx: &Ctx, action: Option<ConfigAction>) -> Result<()> {
+    let mut cfg = config::load(&ctx.paths)?;
+    let (key, value) = match action {
+        None => {
+            for s in config::SETTINGS {
+                let note = if s.is_default(&cfg) { " (default)" } else { "" };
+                ui::print(format!("{} = {}{note}", s.key, s.get(&cfg)));
+                ui::hint(format!("  {}", s.about));
+            }
+            return Ok(());
+        }
+        Some(ConfigAction::Get { key }) => {
+            ui::print(config::find(&key)?.get(&cfg));
+            return Ok(());
+        }
+        Some(ConfigAction::Set { key, value }) => {
+            config::validate(&key, &value)?;
+            (key, Some(value))
+        }
+        Some(ConfigAction::Unset { key }) => (key, None),
+    };
+    let setting = config::find(&key)?;
+    let before = setting.get(&cfg);
+    setting.set(&mut cfg, value.as_deref())?;
+    let after = setting.get(&cfg);
+    if before == after {
+        ui::ok(format!("{key} is already {after}."));
+        return Ok(());
+    }
+    if ctx.dry_run {
+        ui::hint(format!(
+            "Dry run: would set {key} to {after}. Nothing was saved."
+        ));
+        return Ok(());
+    }
+    config::save(&ctx.paths, &cfg)?;
+    ui::ok(format!("{key} is now {after}."));
+    if key == "zsh.compinit" {
+        setup::refresh_zsh_block(ctx)?;
+    }
     Ok(())
 }
 
@@ -106,5 +149,6 @@ fn dispatch(ctx: &Ctx, command: Command) -> Result<()> {
         }
         Command::Import(args) => import::run(ctx, args),
         Command::Doctor => doctor::run(ctx),
+        Command::Config { action } => config_cmd(ctx, action),
     }
 }
