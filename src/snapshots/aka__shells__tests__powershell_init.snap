@@ -6,10 +6,13 @@ expression: "render_for(Shell::Powershell)"
 # Use `aka add`, `aka edit` or `aka rm` instead.
 
 foreach ($__aka_n in @($global:__AKA_FUNCS)) {
-    if ($__aka_n) { Remove-Item -LiteralPath "Function:\$__aka_n" -Force -ErrorAction SilentlyContinue }
+    if ($__aka_n) {
+        Remove-Item -LiteralPath "Function:\$__aka_n" -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath "Alias:\$__aka_n" -Force -ErrorAction SilentlyContinue
+    }
 }
 Remove-Variable -Name __aka_n -ErrorAction SilentlyContinue
-$global:__AKA_FUNCS = @('clean', 'gs', 'll', 'ls', 'say')
+$global:__AKA_FUNCS = @('clean', 'g', 'gs', 'll', 'ls', 'say')
 
 Remove-Item -LiteralPath 'Alias:\clean' -Force -ErrorAction SilentlyContinue
 function global:clean {
@@ -17,6 +20,8 @@ function global:clean {
     if ($__aka_r -notmatch '^(y|yes)$') { return }
     rm -rf build @args
 }
+Remove-Item -LiteralPath 'Alias:\g' -Force -ErrorAction SilentlyContinue
+Set-Alias -Name 'g' -Value 'git' -Scope Global -Force
 Remove-Item -LiteralPath 'Alias:\gs' -Force -ErrorAction SilentlyContinue
 function global:gs { git status @args }
 Remove-Item -LiteralPath 'Alias:\ll' -Force -ErrorAction SilentlyContinue
@@ -25,6 +30,22 @@ Remove-Item -LiteralPath 'Alias:\ls' -Force -ErrorAction SilentlyContinue
 function global:ls { & (Get-Command -Name 'ls' -CommandType Application,Cmdlet | Select-Object -First 1) -G @args }
 Remove-Item -LiteralPath 'Alias:\say' -Force -ErrorAction SilentlyContinue
 function global:say { echo 'it''s' @args }
+
+$global:__AkaExpand = @{ 'clean' = 'rm -rf build'; 'gs' = 'git status'; 'll' = 'ls -la'; 'say' = 'echo ''it''''s''' }
+$global:__AkaComplete = {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    $name = $commandAst.GetCommandName()
+    $expansion = $global:__AkaExpand[$name]
+    if (-not $expansion) { return }
+    $text = $commandAst.Extent.Text
+    $line = $expansion + $text.Substring($name.Length)
+    $column = $cursorPosition - $commandAst.Extent.StartOffset + $expansion.Length - $name.Length
+    (TabExpansion2 -inputScript $line -cursorColumn $column).CompletionMatches
+}
+foreach ($__aka_n in $global:__AkaExpand.Keys) {
+    Register-ArgumentCompleter -Native -CommandName $__aka_n -ScriptBlock $global:__AkaComplete
+}
+Remove-Variable -Name __aka_n -ErrorAction SilentlyContinue
 
 $global:__AkaInit = '/home/me/.config/aka/init.ps1'
 $global:__AkaStamp = (Get-Item -LiteralPath $global:__AkaInit -ErrorAction SilentlyContinue).LastWriteTimeUtc

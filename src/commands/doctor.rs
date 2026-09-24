@@ -106,6 +106,24 @@ pub fn run(ctx: &Ctx) -> Result<()> {
                 .collect::<Vec<_>>()
                 .join(", ");
             r.ok(format!("{shell}: hooked in {files}"));
+            if shell == Shell::Powershell {
+                for profile in &hooked {
+                    let text = fs::read_to_string(profile).unwrap_or_default();
+                    if let Some(tool) = setup::prompt_tool_after_block(&text) {
+                        r.warn(format!(
+                            "powershell: `{tool}` loads after aka in {}, so new aliases only show up \
+                             in new windows. Run `aka setup --shell powershell` to move aka's block to the end",
+                            paths.pretty(profile)
+                        ));
+                    }
+                }
+            }
+            if shell == Shell::Zsh && setup::zsh_aliases_enabled() == Some(false) {
+                r.warn(
+                    "zsh: aliases are turned off (NO_ALIASES), so aka's aliases won't work. \
+                     Remove `setopt no_aliases` or `unsetopt aliases` from your zsh config",
+                );
+            }
             if shell == Shell::Zsh {
                 match setup::zsh_completion(paths) {
                     setup::ZshCompletion::On => r.ok("zsh: tab completion is on"),

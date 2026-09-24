@@ -8,9 +8,10 @@ expression: "render_for(Shell::Zsh)"
 for __aka_n in ${=__AKA_ALIASES-}; do unalias "$__aka_n" 2>/dev/null; done
 for __aka_n in ${=__AKA_FUNCS-}; do unfunction "$__aka_n" 2>/dev/null; done
 unset __aka_n
-__AKA_ALIASES='gs ll ls say'
+__AKA_ALIASES='g gs ll ls say'
 __AKA_FUNCS='clean'
 
+alias g='git'
 alias gs='git status'
 alias ll='ls -la'
 alias ls='ls -G'
@@ -69,4 +70,15 @@ function _clap_dynamic_completer_aka() {
 
 compdef _clap_dynamic_completer_aka aka
 compdef clean=rm
+__aka_descs=('clean:rm -rf build' 'g:git' 'gs:quick status' 'll:ls -la' 'ls:ls -G' 'say:echo '\''it'\'''\''s'\''')
+if [[ ${_comps[-command-]} != _aka_command ]]; then
+  __aka_command_prev=${_comps[-command-]:-_command_names}
+fi
+_aka_command() {
+  (( ${#__aka_descs} )) && _describe -t aka-aliases 'aka alias' __aka_descs
+  "$__aka_command_prev" "$@"
+}
+compdef _aka_command -command-
+# aka's aliases already appear above with descriptions; don't list them twice.
+zstyle ':completion:*:-command-:*:aliases' ignored-patterns ${=__AKA_ALIASES}
 fi

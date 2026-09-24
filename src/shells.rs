@@ -308,8 +308,31 @@ fn zsh(out: &mut String, entries: &[(&str, &Alias)], rc: &RenderCtx) {
             let _ = writeln!(out, "compdef {name}={cmd}");
         }
     }
+    // Show each alias with its description when completing a command name.
+    // zsh lists plain aliases without any, so aka adds its own group ahead of
+    // the usual command completion (kept in __aka_command_prev).
+    let descs: Vec<String> = entries
+        .iter()
+        .map(|(name, alias)| {
+            let about = alias.description.as_deref().unwrap_or(&alias.command);
+            sh_quote(&format!("{name}:{about}"))
+        })
+        .collect();
+    let _ = write!(out, "__aka_descs=({})\n{ZSH_DESCRIBE}", descs.join(" "));
     out.push_str("fi\n");
 }
+
+const ZSH_DESCRIBE: &str = r#"if [[ ${_comps[-command-]} != _aka_command ]]; then
+  __aka_command_prev=${_comps[-command-]:-_command_names}
+fi
+_aka_command() {
+  (( ${#__aka_descs} )) && _describe -t aka-aliases 'aka alias' __aka_descs
+  "$__aka_command_prev" "$@"
+}
+compdef _aka_command -command-
+# aka's aliases already appear above with descriptions; don't list them twice.
+zstyle ':completion:*:-command-:*:aliases' ignored-patterns ${=__AKA_ALIASES}
+"#;
 
 fn posix_confirm_function(out: &mut String, name: &str, alias: &Alias) {
     let _ = write!(
@@ -387,21 +410,43 @@ fn powershell(out: &mut String, entries: &[(&str, &Alias)], rc: &RenderCtx) {
 
     out.push_str(
         "foreach ($__aka_n in @($global:__AKA_FUNCS)) {\n    \
-           if ($__aka_n) { Remove-Item -LiteralPath \"Function:\\$__aka_n\" -Force -ErrorAction SilentlyContinue }\n\
+           if ($__aka_n) {\n        \
+             Remove-Item -LiteralPath \"Function:\\$__aka_n\" -Force -ErrorAction SilentlyContinue\n        \
+             Remove-Item -LiteralPath \"Alias:\\$__aka_n\" -Force -ErrorAction SilentlyContinue\n    \
+           }\n\
          }\n\
          Remove-Variable -Name __aka_n -ErrorAction SilentlyContinue\n",
     );
     let quoted: Vec<String> = entries.iter().map(|(n, _)| ps_quote(n)).collect();
     let _ = writeln!(out, "$global:__AKA_FUNCS = @({})\n", quoted.join(", "));
 
-    // Set-Alias can't carry arguments, so every alias becomes a function. Built-in
-    // aliases with the same name (gp, gc, ls...) would win over functions, so drop them.
+    // A one-word command becomes a real PowerShell alias, which completes like
+    // the command it points to. Set-Alias can't carry arguments, so anything
+    // longer becomes a function, with a completer below that passes Tab through.
+    // Built-in aliases with the same name (gp, gc, ls...) would win over
+    // functions, so they're dropped for the session.
+    let mut expansions = Vec::new();
     for (name, alias) in entries {
         let _ = writeln!(
             out,
             "Remove-Item -LiteralPath {} -Force -ErrorAction SilentlyContinue",
             ps_quote(&format!("Alias:\\{name}"))
         );
+        let command = alias.command.trim();
+        if !alias.confirm && !command.contains(char::is_whitespace) && command != *name {
+            let _ = writeln!(
+                out,
+                "Set-Alias -Name {} -Value {} -Scope Global -Force",
+                ps_quote(name),
+                ps_quote(command)
+            );
+            continue;
+        }
+        // `ls = ls -G` style wrappers already complete as themselves; passing
+        // them through would call this same completer again, forever.
+        if !safety::is_wrapper(name, command) {
+            expansions.push(format!("{} = {}", ps_quote(name), ps_quote(command)));
+        }
         let call = body(
             name,
             &alias.command,
@@ -427,6 +472,14 @@ fn powershell(out: &mut String, entries: &[(&str, &Alias)], rc: &RenderCtx) {
         }
     }
 
+    if !expansions.is_empty() {
+        let _ = write!(
+            out,
+            "\n$global:__AkaExpand = @{{ {} }}\n{PS_PASSTHROUGH}",
+            expansions.join("; ")
+        );
+    }
+
     let _ = write!(
         out,
         "\n$global:__AkaInit = {init}\n\
@@ -444,6 +497,24 @@ fn powershell(out: &mut String, entries: &[(&str, &Alias)], rc: &RenderCtx) {
         registration(&clap_complete::env::Powershell, rc)
     );
 }
+
+/// Completes `gco ma<Tab>` like `git checkout ma<Tab>`: rewrites the line with
+/// the alias expanded and hands it to PowerShell's own completion engine.
+const PS_PASSTHROUGH: &str = r#"$global:__AkaComplete = {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    $name = $commandAst.GetCommandName()
+    $expansion = $global:__AkaExpand[$name]
+    if (-not $expansion) { return }
+    $text = $commandAst.Extent.Text
+    $line = $expansion + $text.Substring($name.Length)
+    $column = $cursorPosition - $commandAst.Extent.StartOffset + $expansion.Length - $name.Length
+    (TabExpansion2 -inputScript $line -cursorColumn $column).CompletionMatches
+}
+foreach ($__aka_n in $global:__AkaExpand.Keys) {
+    Register-ArgumentCompleter -Native -CommandName $__aka_n -ScriptBlock $global:__AkaComplete
+}
+Remove-Variable -Name __aka_n -ErrorAction SilentlyContinue
+"#;
 
 // ---------------------------------------------------------------- helpers
 
@@ -495,6 +566,7 @@ mod tests {
         gs.description = Some("quick status".into());
         state.insert("gs", gs);
         state.insert("ll", Alias::new("ls -la"));
+        state.insert("g", Alias::new("git"));
         state.insert("ls", Alias::new("ls -G"));
         state.insert("say", Alias::new("echo 'it''s'"));
         let mut clean = Alias::new("rm -rf build");

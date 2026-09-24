@@ -8,9 +8,10 @@ expression: "render_for(Shell::Bash)"
 for __aka_n in ${__AKA_ALIASES-}; do unalias "$__aka_n" 2>/dev/null; complete -r "$__aka_n" 2>/dev/null; done
 for __aka_n in ${__AKA_FUNCS-}; do unset -f "$__aka_n" 2>/dev/null; complete -r "$__aka_n" 2>/dev/null; done
 unset __aka_n
-__AKA_ALIASES='gs ll ls say'
+__AKA_ALIASES='g gs ll ls say'
 __AKA_FUNCS='clean'
 
+alias g='git'
 alias gs='git status'
 alias ll='ls -la'
 alias ls='ls -G'
@@ -68,6 +69,7 @@ fi
 __aka_expand() {
   case "$1" in
     clean) __aka_reply='rm -rf build' ;;
+    g) __aka_reply='git' ;;
     gs) __aka_reply='git status' ;;
     ll) __aka_reply='ls -la' ;;
     ls) __aka_reply='ls -G' ;;
@@ -101,5 +103,5 @@ __aka_complete_alias() {
   COMP_CWORD=$((COMP_CWORD + ${#__aka_words[@]} - 1))
   "$__aka_fn" "$__aka_cmd" "${COMP_WORDS[COMP_CWORD]}" "${COMP_WORDS[COMP_CWORD-1]}"
 }
-complete -o bashdefault -o default -F __aka_complete_alias clean gs ll say
+complete -o bashdefault -o default -F __aka_complete_alias clean g gs ll say
 fi

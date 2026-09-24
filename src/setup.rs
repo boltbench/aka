@@ -235,12 +235,25 @@ pub fn zsh_completion(paths: &Paths) -> ZshCompletion {
 /// exists, the function compinit defines. Gives up after a few seconds, in case
 /// the profile waits for input.
 fn probe_zsh_completion() -> Option<bool> {
+    probe_zsh("print -r -- AKA_PROBE=${+functions[compdef]}").map(|v| v == "1")
+}
+
+/// Whether the user's zsh has aliases turned on. `setopt NO_ALIASES` turns
+/// them off, and then none of aka's plain aliases would work.
+pub fn zsh_aliases_enabled() -> Option<bool> {
+    probe_zsh("[[ -o aliases ]] && print AKA_PROBE=on || print AKA_PROBE=off").map(|v| v == "on")
+}
+
+/// Runs `script` in `zsh -i` (which reads the user's .zshrc) and returns what
+/// it printed after `AKA_PROBE=`. Gives up after a few seconds, in case the
+/// profile waits for input.
+fn probe_zsh(script: &str) -> Option<String> {
     use std::io::Read;
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
 
     let mut child = Command::new("zsh")
-        .args(["-i", "-c", "print -r -- AKA_PROBE=${+functions[compdef]}"])
+        .args(["-i", "-c", script])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -260,13 +273,8 @@ fn probe_zsh_completion() -> Option<bool> {
     }
     let mut out = String::new();
     child.stdout.take()?.read_to_string(&mut out).ok()?;
-    if out.contains("AKA_PROBE=1") {
-        Some(true)
-    } else if out.contains("AKA_PROBE=0") {
-        Some(false)
-    } else {
-        None
-    }
+    let (_, value) = out.rsplit_once("AKA_PROBE=")?;
+    Some(value.split_whitespace().next().unwrap_or("").to_string())
 }
 
 /// A best guess from the profile text: compinit called directly, or a
@@ -394,6 +402,27 @@ fn split_block(text: &str) -> Option<(&str, &str)> {
     Some((&text[..start], &text[end..]))
 }
 
+/// Prompt tools that replace PowerShell's `prompt` function. If one loads
+/// after aka's block, aka's reload hook is gone and new aliases only show up
+/// in new windows.
+const PROMPT_TOOLS: &[&str] = &[
+    "starship init",
+    "oh-my-posh",
+    "function prompt",
+    "$function:prompt",
+];
+
+/// The prompt tool loaded after aka's block, if any.
+pub fn prompt_tool_after_block(text: &str) -> Option<&'static str> {
+    let (_, after) = split_block(text)?;
+    PROMPT_TOOLS.iter().copied().find(|tool| {
+        after
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .any(|l| l.to_lowercase().contains(&tool.to_lowercase()))
+    })
+}
+
 pub fn any_hook_installed(paths: &Paths) -> bool {
     Shell::ALL.iter().any(|&shell| {
         hook_profiles(shell, paths)
@@ -426,7 +455,19 @@ pub fn setup(ctx: &Ctx, shells: Vec<Shell>, no_completion: bool) -> Result<()> {
     for &shell in &chosen {
         for profile in hook_profiles(shell, &ctx.paths) {
             let old = fs::read_to_string(&profile).unwrap_or_default();
-            let new = insert_hook(&old, &block_with(shell, &ctx.paths, zsh_completion));
+            let block = block_with(shell, &ctx.paths, zsh_completion);
+            // PowerShell reloads aliases from its prompt, so aka's block has to
+            // come after anything that replaces the prompt. Move it to the end.
+            let new = match (shell, prompt_tool_after_block(&old)) {
+                (Shell::Powershell, Some(tool)) => {
+                    ui::info(format!(
+                        "`{tool}` loads after aka in {}, so aka's block moves to the end.",
+                        ctx.paths.pretty(&profile)
+                    ));
+                    insert_hook(&remove_hook(&old).unwrap_or_default(), &block)
+                }
+                _ => insert_hook(&old, &block),
+            };
             if old == new {
                 ui::ok(format!(
                     "{shell}: already set up in {}",
@@ -660,6 +701,28 @@ mod tests {
         assert!(block_with(Shell::Zsh, &paths, Some(Compinit::Cached)).contains("compinit -C -i"));
         // only zsh gets it
         assert!(!block_with(Shell::Bash, &paths, Some(Compinit::Full)).contains("compinit"));
+    }
+
+    #[test]
+    fn spots_prompt_tools_after_the_block() {
+        let block = "# >>> aka >>>\nx\n# <<< aka <<<\n";
+        assert_eq!(
+            prompt_tool_after_block(&format!(
+                "{block}Invoke-Expression (&starship init powershell)\n"
+            )),
+            Some("starship init")
+        );
+        assert_eq!(
+            prompt_tool_after_block(&format!(
+                "oh-my-posh init pwsh | Invoke-Expression\n{block}"
+            )),
+            None,
+            "before the block is fine"
+        );
+        assert_eq!(
+            prompt_tool_after_block(&format!("{block}# starship init\n")),
+            None
+        );
     }
 
     #[test]

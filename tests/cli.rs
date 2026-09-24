@@ -471,43 +471,53 @@ fn init(env: &Env, ext: &str) -> String {
     env.root().join(format!("init.{ext}")).display().to_string()
 }
 
-#[test]
-fn works_in_bash() {
-    if !has("bash") {
+/// Runs the standard checks in bash or zsh: the alias works, removing it takes
+/// effect in the same session, and confirm-before-run asks. `prelude` runs
+/// first, to try unusual settings like `set -u`.
+fn check_posix_shell(shell: &str, prelude: &str) {
+    if !has(shell) {
         return;
     }
     let env = prepared();
+    // zsh parses the whole -c script up front, so `eval` makes it expand
+    // aliases defined along the way. bash reads a line at a time either way.
     let script = format!(
-        "source '{}'\nhello\naka rm hello >/dev/null 2>&1\nhello 2>/dev/null || echo gone\necho y | careful\necho n | careful || echo declined",
-        init(&env, "bash")
+        "{prelude}\nsource '{}'\neval hello\naka rm hello >/dev/null 2>&1\neval hello 2>/dev/null || echo gone\necho y | careful\necho n | careful || echo declined",
+        init(&env, shell)
     );
-    // Aliases only expand in interactive bash, and are read a line at a time.
-    let out = in_shell(&env, "bash", &["-i", "-c"], &script);
-    assert!(out.contains("hello-from-aka"), "{out}");
+    // Aliases only expand in interactive shells.
+    let out = in_shell(&env, shell, &["-i", "-c"], &script);
+    assert!(out.contains("hello-from-aka"), "{shell} {prelude}: {out}");
     assert!(
         out.contains("gone"),
-        "removed alias should disappear in the same session: {out}"
+        "{shell} {prelude}: removed alias should disappear in the same session: {out}"
     );
-    assert!(out.contains("ran-careful"), "{out}");
-    assert!(out.contains("declined"), "{out}");
+    assert!(out.contains("ran-careful"), "{shell} {prelude}: {out}");
+    assert!(out.contains("declined"), "{shell} {prelude}: {out}");
+    assert!(
+        !out.contains("unbound variable") && !out.contains("parameter not set"),
+        "{shell} {prelude}: {out}"
+    );
+}
+
+#[test]
+fn works_in_bash() {
+    check_posix_shell("bash", "");
+}
+
+#[test]
+fn works_in_bash_with_set_u() {
+    check_posix_shell("bash", "set -u");
 }
 
 #[test]
 fn works_in_zsh() {
-    if !has("zsh") {
-        return;
-    }
-    let env = prepared();
-    let script = format!(
-        "source '{}'\neval hello\naka rm hello >/dev/null 2>&1\neval hello 2>/dev/null || echo gone\necho y | careful\necho n | careful || echo declined",
-        init(&env, "zsh")
-    );
-    // zsh parses the whole -c script up front, so `eval` makes it expand aliases defined along the way.
-    let out = in_shell(&env, "zsh", &["-i", "-c"], &script);
-    assert!(out.contains("hello-from-aka"), "{out}");
-    assert!(out.contains("gone"), "{out}");
-    assert!(out.contains("ran-careful"), "{out}");
-    assert!(out.contains("declined"), "{out}");
+    check_posix_shell("zsh", "");
+}
+
+#[test]
+fn works_in_zsh_with_nounset() {
+    check_posix_shell("zsh", "setopt nounset");
 }
 
 #[test]
@@ -552,6 +562,85 @@ fn works_in_powershell() {
     );
     assert!(out.contains("hello-from-aka"), "{out}");
     assert!(out.contains("gone"), "{out}");
+}
+
+/// `gco ma<Tab>` should complete like `git checkout ma<Tab>`, and `g` (a
+/// one-word alias, so a real PowerShell alias) like `git`. A fake git
+/// completer stands in for posh-git so the test doesn't depend on it.
+#[test]
+fn powershell_completes_through_aliases() {
+    let shell = if cfg!(windows) && which::which("pwsh").is_err() {
+        "powershell"
+    } else if has("pwsh") {
+        "pwsh"
+    } else {
+        return;
+    };
+    let env = Env::new();
+    env.run(&["add", "gco", "git checkout"]).success();
+    env.run(&["add", "g", "git"]).success();
+    let init = init(&env, "ps1");
+    let script = format!(
+        ". '{init}'; \
+         Register-ArgumentCompleter -Native -CommandName git -ScriptBlock {{ \
+           param($w, $ast, $pos) \
+           [System.Management.Automation.CompletionResult]::new('fake:' + $ast.Extent.Text, 'x', 'ParameterValue', 'x') }}; \
+         (TabExpansion2 -inputScript 'gco ma' -cursorColumn 6).CompletionMatches.CompletionText; \
+         (TabExpansion2 -inputScript 'g sta' -cursorColumn 5).CompletionMatches.CompletionText"
+    );
+    let out = in_shell(
+        &env,
+        shell,
+        &["-NoProfile", "-NonInteractive", "-Command"],
+        &script,
+    );
+    assert!(out.contains("fake:git checkout ma"), "{out}");
+    assert!(
+        out.contains("fake:g sta") || out.contains("fake:git sta"),
+        "{out}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn setup_moves_the_block_after_prompt_tools() {
+    let env = Env::new();
+    let profile = env
+        .home()
+        .join(".config/powershell/Microsoft.PowerShell_profile.ps1");
+    env.run(&["setup", "-y", "--shell", "powershell"]).success();
+    let mut text = fs::read_to_string(&profile).unwrap();
+    text.push_str("Invoke-Expression (&starship init powershell)\n");
+    fs::write(&profile, &text).unwrap();
+
+    env.run(&["doctor"])
+        .stdout(predicate::str::contains("starship init"));
+    env.run(&["setup", "-y", "--shell", "powershell"]).success();
+    let text = fs::read_to_string(&profile).unwrap();
+    let starship = text.find("starship init").unwrap();
+    let block = text.find("# >>> aka >>>").unwrap();
+    assert!(
+        block > starship,
+        "aka's block should now come last:\n{text}"
+    );
+    assert_eq!(text.matches("# >>> aka >>>").count(), 1);
+}
+
+#[test]
+fn doctor_notices_zsh_without_aliases() {
+    if !has("zsh") {
+        return;
+    }
+    let env = Env::new();
+    fs::write(env.home().join(".zshrc"), "unsetopt aliases\n").unwrap();
+    env.run(&["setup", "-y", "--no-completion", "--shell", "zsh"])
+        .success();
+    // doctor needs to find zsh to ask it, so give it the real PATH
+    env.aka()
+        .env("PATH", std::env::var_os("PATH").unwrap())
+        .arg("doctor")
+        .assert()
+        .stdout(predicate::str::contains("aliases are turned off"));
 }
 
 // ------------------------------------------------------------ review fixes
