@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center"><b>Also known as: your shell aliases, in one place.</b></p>
+<p align="center"><b>Also known as: your shell aliases, in one place.</b><br><a href="https://boltbench.github.io/aka/">boltbench.github.io/aka</a></p>
 
 <p align="center">
   <a href="https://github.com/boltbench/aka/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/boltbench/aka/actions/workflows/ci.yml/badge.svg"></a>
