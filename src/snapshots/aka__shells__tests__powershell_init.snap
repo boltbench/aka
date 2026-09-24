@@ -21,7 +21,7 @@ function global:clean {
     rm -rf build @args
 }
 Remove-Item -LiteralPath 'Alias:\g' -Force -ErrorAction SilentlyContinue
-Set-Alias -Name 'g' -Value 'git' -Scope Global -Force
+function global:g { git @args }
 Remove-Item -LiteralPath 'Alias:\gs' -Force -ErrorAction SilentlyContinue
 function global:gs { git status @args }
 Remove-Item -LiteralPath 'Alias:\ll' -Force -ErrorAction SilentlyContinue
@@ -33,7 +33,7 @@ function global:mkcd { mkdir -p "$($args[0])" && cd "$($args[0])" }
 Remove-Item -LiteralPath 'Alias:\say' -Force -ErrorAction SilentlyContinue
 function global:say { echo 'it''s' @args }
 
-$global:__AkaExpand = @{ 'clean' = 'rm -rf build'; 'gs' = 'git status'; 'll' = 'ls -la'; 'mkcd' = 'mkdir -p "$1" && cd "$1"'; 'say' = 'echo ''it''''s''' }
+$global:__AkaExpand = @{ 'clean' = 'rm -rf build'; 'g' = 'git'; 'gs' = 'git status'; 'll' = 'ls -la'; 'mkcd' = 'mkdir -p "$1" && cd "$1"'; 'say' = 'echo ''it''''s''' }
 $global:__AkaComplete = {
     param($wordToComplete, $commandAst, $cursorPosition)
     $name = $commandAst.GetCommandName()

@@ -571,7 +571,11 @@ fn works_in_powershell() {
         &script,
     );
     assert!(out.contains("hello-from-aka"), "{out}");
-    assert!(out.contains("hi-hi count=2"), "arguments: {out}");
+    // PowerShell's echo prints each argument on its own line
+    assert!(
+        out.contains("hi-hi") && out.contains("count=2"),
+        "arguments: {out}"
+    );
     assert!(out.contains("gone"), "{out}");
 }
 
@@ -606,10 +610,7 @@ fn powershell_completes_through_aliases() {
         &script,
     );
     assert!(out.contains("fake:git checkout ma"), "{out}");
-    assert!(
-        out.contains("fake:g sta") || out.contains("fake:git sta"),
-        "{out}"
-    );
+    assert!(out.contains("fake:git sta"), "{out}");
 }
 
 #[cfg(unix)]

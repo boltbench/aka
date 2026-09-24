@@ -457,11 +457,12 @@ fn powershell(out: &mut String, entries: &[(&str, &Alias)], rc: &RenderCtx) {
     let quoted: Vec<String> = entries.iter().map(|(n, _)| ps_quote(n)).collect();
     let _ = writeln!(out, "$global:__AKA_FUNCS = @({})\n", quoted.join(", "));
 
-    // A one-word command becomes a real PowerShell alias, which completes like
-    // the command it points to. Set-Alias can't carry arguments, so anything
-    // longer becomes a function, with a completer below that passes Tab through.
-    // Built-in aliases with the same name (gp, gc, ls...) would win over
-    // functions, so they're dropped for the session.
+    // Set-Alias can't carry arguments, so every alias becomes a function, with
+    // a completer below that passes Tab through to the command it runs.
+    // (A real alias for one-word commands would seem simpler, but PowerShell
+    // doesn't hand native completion through to it.) Built-in aliases with the
+    // same name (gp, gc, ls...) would win over functions, so they're dropped
+    // for the session.
     let mut expansions = Vec::new();
     for (name, alias) in entries {
         let _ = writeln!(
@@ -470,19 +471,6 @@ fn powershell(out: &mut String, entries: &[(&str, &Alias)], rc: &RenderCtx) {
             ps_quote(&format!("Alias:\\{name}"))
         );
         let command = alias.command.trim();
-        if !alias.confirm
-            && !alias.takes_args()
-            && !command.contains(char::is_whitespace)
-            && command != *name
-        {
-            let _ = writeln!(
-                out,
-                "Set-Alias -Name {} -Value {} -Scope Global -Force",
-                ps_quote(name),
-                ps_quote(command)
-            );
-            continue;
-        }
         // `ls = ls -G` style wrappers already complete as themselves; passing
         // them through would call this same completer again, forever.
         if !safety::is_wrapper(name, command) {

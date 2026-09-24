@@ -85,8 +85,10 @@ fn spell(p: Placeholder, style: Style) -> String {
         // $(...) so it also works inside double quotes
         (Style::Powershell, Placeholder::Nth(n)) => format!("$($args[{}])", n - 1),
         (Style::Powershell, Placeholder::AllQuoted | Placeholder::All) => "@args".into(),
-        (Style::Powershell, Placeholder::Joined) => "\"$args\"".into(),
-        (Style::Powershell, Placeholder::Count) => "$args.Count".into(),
+        // $(...) everywhere: a bare `$args.Count` in the middle of an argument
+        // reads as `$args` followed by the text ".Count".
+        (Style::Powershell, Placeholder::Joined) => "$($args -join ' ')".into(),
+        (Style::Powershell, Placeholder::Count) => "$($args.Count)".into(),
     }
 }
 
@@ -149,7 +151,14 @@ mod tests {
             translate("grep -r \"$@\" .", Style::Powershell),
             "grep -r @args ."
         );
-        assert_eq!(translate("echo $*", Style::Powershell), "echo \"$args\"");
+        assert_eq!(
+            translate("echo $*", Style::Powershell),
+            "echo $($args -join ' ')"
+        );
+        assert_eq!(
+            translate("echo count=$#", Style::Powershell),
+            "echo count=$($args.Count)"
+        );
     }
 
     #[test]
