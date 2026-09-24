@@ -1,0 +1,736 @@
+//! End-to-end tests. Each test gets its own fake HOME so nothing touches the real one.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command as StdCommand;
+
+use assert_cmd::Command;
+use predicates::prelude::*;
+use tempfile::TempDir;
+
+struct Env {
+    home: TempDir,
+}
+
+impl Env {
+    fn new() -> Self {
+        Self {
+            home: TempDir::new().unwrap(),
+        }
+    }
+
+    fn home(&self) -> &Path {
+        self.home.path()
+    }
+
+    fn root(&self) -> PathBuf {
+        self.home().join(".config").join("aka")
+    }
+
+    fn aka(&self) -> Command {
+        let mut cmd = Command::cargo_bin("aka").unwrap();
+        // Only aka's own directory on PATH, so shadow warnings don't depend on
+        // what happens to be installed on the machine running the tests.
+        cmd.env("PATH", bin_dir())
+            .env("HOME", self.home())
+            .env("AKA_HOME", self.root())
+            .env("NO_COLOR", "1")
+            .env_remove("XDG_CONFIG_HOME")
+            .env_remove("ZDOTDIR")
+            .env_remove("VISUAL")
+            .env_remove("EDITOR");
+        cmd
+    }
+
+    fn run(&self, args: &[&str]) -> assert_cmd::assert::Assert {
+        self.aka().args(args).write_stdin("").assert()
+    }
+
+    fn plain_list(&self) -> String {
+        let out = self.aka().args(["list", "--plain"]).output().unwrap();
+        String::from_utf8(out.stdout).unwrap()
+    }
+}
+
+#[test]
+fn add_and_list() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git", "status"])
+        .success()
+        .stderr(predicate::str::contains("Added"));
+    env.run(&["add", "-d", "long listing", "ll", "ls -la"])
+        .success();
+    assert_eq!(env.plain_list(), "gs\tgit status\nll\tls -la\n");
+    env.run(&["list"])
+        .success()
+        .stdout(predicate::str::contains("long listing"));
+}
+
+#[test]
+fn options_after_a_quoted_command() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status", "-d", "quick status", "--lock"])
+        .success();
+    env.run(&["show", "gs"])
+        .success()
+        .stdout(predicate::str::contains("quick status").and(predicate::str::contains("locked")));
+}
+
+#[test]
+fn conflict_defaults_to_cancel() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status"]).success();
+    env.aka()
+        .args(["add", "gs", "git status -sb"])
+        .write_stdin("\n")
+        .assert()
+        .failure()
+        .stderr(
+            predicate::str::contains("already exists").and(predicate::str::contains("Cancelled")),
+        );
+    assert_eq!(env.plain_list(), "gs\tgit status\n");
+}
+
+#[test]
+fn conflict_replace_and_rename() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status"]).success();
+    env.aka()
+        .args(["add", "gs", "git status -sb"])
+        .write_stdin("r\n")
+        .assert()
+        .success();
+    assert_eq!(env.plain_list(), "gs\tgit status -sb\n");
+
+    env.aka()
+        .args(["add", "gs", "git status --short"])
+        .write_stdin("n\ngss\n")
+        .assert()
+        .success();
+    assert_eq!(
+        env.plain_list(),
+        "gs\tgit status -sb\ngss\tgit status --short\n"
+    );
+}
+
+#[test]
+fn new_name_that_already_runs_the_command() {
+    let env = Env::new();
+    env.run(&["add", "g", "git"]).success();
+    env.run(&["add", "gs", "git status"]).success();
+    env.aka()
+        .args(["add", "g", "git status"])
+        .write_stdin("n\ngs\n")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("already runs"));
+    assert_eq!(env.plain_list(), "g\tgit\ngs\tgit status\n");
+}
+
+#[test]
+fn force_replaces_without_asking() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status"]).success();
+    env.run(&["add", "-f", "gs", "git status -sb"]).success();
+    assert_eq!(env.plain_list(), "gs\tgit status -sb\n");
+}
+
+#[test]
+fn same_command_updates_other_fields() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status"]).success();
+    env.run(&["add", "-d", "status", "gs", "git status"])
+        .success()
+        .stderr(predicate::str::contains("Updated"));
+    env.run(&["add", "gs", "git status"])
+        .success()
+        .stderr(predicate::str::contains("nothing to change"));
+}
+
+#[test]
+fn rejects_bad_names_and_loops() {
+    let env = Env::new();
+    env.run(&["add", "has space", "x"])
+        .failure()
+        .stderr(predicate::str::contains("contains a space"));
+    env.run(&["add", "if", "x"])
+        .failure()
+        .stderr(predicate::str::contains("reserved"));
+    env.run(&["add", "a", "b"]).success();
+    env.run(&["add", "b", "a --x"])
+        .failure()
+        .stderr(predicate::str::contains("loop"));
+}
+
+#[test]
+fn dangerous_commands_need_confirmation() {
+    let env = Env::new();
+    env.run(&["add", "nuke", "rm -rf build"])
+        .failure()
+        .stderr(predicate::str::contains("recursively"));
+    env.run(&["add", "-y", "nuke", "rm -rf build"]).success();
+    // --confirm makes the alias itself ask, so no warning is needed
+    env.run(&["add", "--confirm", "nuke2", "rm -rf build"])
+        .success();
+}
+
+#[test]
+fn locked_aliases_are_protected() {
+    let env = Env::new();
+    env.run(&["add", "--lock", "gs", "git status"]).success();
+    env.run(&["rm", "gs"])
+        .failure()
+        .stderr(predicate::str::contains("locked"));
+    env.run(&["add", "gs", "other"])
+        .failure()
+        .stderr(predicate::str::contains("locked"));
+    env.run(&["rename", "gs", "g"])
+        .failure()
+        .stderr(predicate::str::contains("locked"));
+    env.run(&["unlock", "gs"]).success();
+    env.run(&["rm", "gs"]).success();
+}
+
+#[test]
+fn rm_restore_and_purge() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status"]).success();
+    env.run(&["rm", "gs"]).success();
+    assert_eq!(env.plain_list(), "");
+    env.run(&["show", "gs"])
+        .failure()
+        .stderr(predicate::str::contains("in the trash"));
+    env.run(&["restore"])
+        .success()
+        .stdout(predicate::str::contains("gs"));
+    env.run(&["restore", "gs"]).success();
+    assert_eq!(env.plain_list(), "gs\tgit status\n");
+    env.run(&["rm", "--purge", "gs"]).success();
+    env.run(&["restore", "gs"]).failure();
+}
+
+#[test]
+fn undo_and_history() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status"]).success();
+    env.run(&["add", "ll", "ls -la"]).success();
+    env.run(&["history"])
+        .success()
+        .stdout(predicate::str::contains("add ll"));
+    env.run(&["undo"])
+        .success()
+        .stderr(predicate::str::contains("add ll"));
+    assert_eq!(env.plain_list(), "gs\tgit status\n");
+    env.run(&["undo"]).success();
+    assert_eq!(env.plain_list(), "");
+    env.run(&["undo"])
+        .failure()
+        .stderr(predicate::str::contains("nothing to undo"));
+}
+
+#[test]
+fn dry_run_changes_nothing() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status"]).success();
+    env.run(&["--dry-run", "rm", "gs"])
+        .success()
+        .stderr(predicate::str::contains("Dry run"));
+    env.run(&["add", "--dry-run", "ll", "ls"]).success();
+    assert_eq!(env.plain_list(), "gs\tgit status\n");
+}
+
+#[test]
+fn rename_copy_and_flags() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status"]).success();
+    env.run(&["cp", "gs", "gst"]).success();
+    env.run(&["rename", "gs", "g"]).success();
+    assert_eq!(env.plain_list(), "g\tgit status\ngst\tgit status\n");
+    env.run(&["disable", "g"]).success();
+    env.run(&["list"])
+        .success()
+        .stdout(predicate::str::contains("disabled"));
+    env.run(&["rm", "nope"])
+        .failure()
+        .stderr(predicate::str::contains("no alias named"));
+    env.run(&["rm", "gz"])
+        .failure()
+        .stderr(predicate::str::contains("Did you mean `g`"));
+}
+
+#[test]
+fn json_output() {
+    let env = Env::new();
+    env.run(&["add", "--shell", "zsh,bash", "gs", "git status"])
+        .success();
+    let out = env.aka().args(["list", "--json"]).output().unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(value[0]["name"], "gs");
+    assert_eq!(value[0]["shells"], serde_json::json!(["zsh", "bash"]));
+    assert_eq!(value[0]["enabled"], true);
+}
+
+#[test]
+fn writes_init_files() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status"]).success();
+    for ext in ["bash", "zsh", "fish", "ps1"] {
+        let text = fs::read_to_string(env.root().join(format!("init.{ext}"))).unwrap();
+        assert!(text.contains("gs"), "init.{ext} should define gs");
+    }
+    env.run(&["init", "zsh"])
+        .success()
+        .stdout(predicate::str::contains("alias gs='git status'"));
+}
+
+#[test]
+fn setup_is_idempotent_and_uninstall_restores() {
+    let env = Env::new();
+    let zshrc = env.home().join(".zshrc");
+    fs::write(&zshrc, "export A=1\n").unwrap();
+    env.run(&["setup", "-y", "--shell", "zsh"]).success();
+    let once = fs::read_to_string(&zshrc).unwrap();
+    assert!(once.contains("# >>> aka >>>"));
+    env.run(&["setup", "-y", "--shell", "zsh"])
+        .success()
+        .stderr(predicate::str::contains("already set up"));
+    assert_eq!(fs::read_to_string(&zshrc).unwrap(), once);
+    env.run(&["uninstall", "-y", "--shell", "zsh"]).success();
+    assert_eq!(fs::read_to_string(&zshrc).unwrap(), "export A=1\n");
+}
+
+#[test]
+fn uninstall_removes_a_profile_that_setup_created() {
+    let env = Env::new();
+    let zshrc = env.home().join(".zshrc");
+    env.run(&["setup", "-y", "--shell", "zsh"]).success();
+    assert!(zshrc.exists());
+    env.run(&["uninstall", "-y", "--shell", "zsh"]).success();
+    assert!(!zshrc.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn setup_follows_symlinks() {
+    let env = Env::new();
+    let real = env.home().join("dotfiles-zshrc");
+    fs::write(&real, "export A=1\n").unwrap();
+    std::os::unix::fs::symlink(&real, env.home().join(".zshrc")).unwrap();
+    env.run(&["setup", "-y", "--shell", "zsh"]).success();
+    assert!(
+        fs::symlink_metadata(env.home().join(".zshrc"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(fs::read_to_string(&real).unwrap().contains("# >>> aka >>>"));
+}
+
+#[test]
+fn import_deletes_or_comments_lines() {
+    let env = Env::new();
+    let zshrc = env.home().join(".zshrc");
+    fs::write(
+        &zshrc,
+        "export A=1\nalias gs='git status'\nalias ll=\"ls -la\" # long\nif true; then\n  alias c='echo c'\nfi\n",
+    )
+    .unwrap();
+    env.run(&[
+        "import",
+        "-y",
+        "--clean",
+        "comment",
+        "--from",
+        zshrc.to_str().unwrap(),
+    ])
+    .success();
+    assert_eq!(env.plain_list(), "c\techo c\ngs\tgit status\nll\tls -la\n");
+    let text = fs::read_to_string(&zshrc).unwrap();
+    assert!(text.contains("# [aka] alias gs='git status'"));
+    assert!(
+        text.contains("  alias c='echo c'"),
+        "lines inside blocks stay untouched"
+    );
+    assert!(
+        text.contains("# >>> aka >>>"),
+        "the hook gets added so the aliases keep loading"
+    );
+}
+
+#[test]
+fn import_keeps_existing_on_cancel() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status -sb"]).success();
+    let file = env.home().join("aliases.sh");
+    fs::write(&file, "alias gs='git status'\n").unwrap();
+    env.aka()
+        .args([
+            "import",
+            "--clean",
+            "keep",
+            "--from",
+            file.to_str().unwrap(),
+        ])
+        .write_stdin("c\n")
+        .assert()
+        .success();
+    assert_eq!(env.plain_list(), "gs\tgit status -sb\n");
+}
+
+#[test]
+fn doctor_reports_missing_hook() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status"]).success();
+    env.run(&["doctor"])
+        .failure()
+        .stdout(predicate::str::contains("no shell loads your aliases"));
+}
+
+#[test]
+fn completion_lists_alias_names() {
+    let env = Env::new();
+    env.run(&["add", "-d", "quick status", "gs", "git status"])
+        .success();
+    env.aka()
+        .env("AKA_COMPLETE", "fish")
+        .args(["--", "aka", "rm", ""])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("gs\tquick status"));
+}
+
+// ------------------------------------------------------------ real shells
+//
+// These source the generated init file in an actual shell. Each one is skipped
+// when that shell isn't installed; CI installs all four.
+
+fn bin_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_aka"))
+        .parent()
+        .unwrap()
+        .to_path_buf()
+}
+
+/// bash, zsh and fish tests only run on Unix. On Windows `bash` may well be WSL's.
+fn has(shell: &str) -> bool {
+    cfg!(unix) && which::which(shell).is_ok()
+}
+
+/// Runs a script in `shell` with aka on PATH and the test's HOME.
+fn in_shell(env: &Env, shell: &str, args: &[&str], script: &str) -> String {
+    let path = std::env::join_paths(std::iter::once(bin_dir()).chain(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    )))
+    .unwrap();
+    let out = StdCommand::new(shell)
+        .args(args)
+        .arg(script)
+        .env("HOME", env.home())
+        .env("AKA_HOME", env.root())
+        .env("PATH", path)
+        .env("NO_COLOR", "1")
+        .env("BASH_SILENCE_DEPRECATION_WARNING", "1")
+        .env_remove("ZDOTDIR")
+        .env_remove("XDG_CONFIG_HOME")
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr)
+}
+
+fn prepared() -> Env {
+    let env = Env::new();
+    env.run(&["add", "hello", "echo hello-from-aka"]).success();
+    env.run(&["add", "--confirm", "careful", "echo ran-careful"])
+        .success();
+    env
+}
+
+fn init(env: &Env, ext: &str) -> String {
+    env.root().join(format!("init.{ext}")).display().to_string()
+}
+
+#[test]
+fn works_in_bash() {
+    if !has("bash") {
+        return;
+    }
+    let env = prepared();
+    let script = format!(
+        "source '{}'\nhello\naka rm hello >/dev/null 2>&1\nhello 2>/dev/null || echo gone\necho y | careful\necho n | careful || echo declined",
+        init(&env, "bash")
+    );
+    // Aliases only expand in interactive bash, and are read a line at a time.
+    let out = in_shell(&env, "bash", &["-i", "-c"], &script);
+    assert!(out.contains("hello-from-aka"), "{out}");
+    assert!(
+        out.contains("gone"),
+        "removed alias should disappear in the same session: {out}"
+    );
+    assert!(out.contains("ran-careful"), "{out}");
+    assert!(out.contains("declined"), "{out}");
+}
+
+#[test]
+fn works_in_zsh() {
+    if !has("zsh") {
+        return;
+    }
+    let env = prepared();
+    let script = format!(
+        "source '{}'\neval hello\naka rm hello >/dev/null 2>&1\neval hello 2>/dev/null || echo gone\necho y | careful\necho n | careful || echo declined",
+        init(&env, "zsh")
+    );
+    // zsh parses the whole -c script up front, so `eval` makes it expand aliases defined along the way.
+    let out = in_shell(&env, "zsh", &["-i", "-c"], &script);
+    assert!(out.contains("hello-from-aka"), "{out}");
+    assert!(out.contains("gone"), "{out}");
+    assert!(out.contains("ran-careful"), "{out}");
+    assert!(out.contains("declined"), "{out}");
+}
+
+#[test]
+fn works_in_fish() {
+    if !has("fish") {
+        return;
+    }
+    let env = prepared();
+    let script = format!(
+        "source '{}'\nhello\naka rm hello >/dev/null 2>&1\nfunctions -q hello; or echo gone\necho y | careful\necho n | careful; or echo declined",
+        init(&env, "fish")
+    );
+    let out = in_shell(&env, "fish", &["-c"], &script);
+    assert!(out.contains("hello-from-aka"), "{out}");
+    assert!(out.contains("gone"), "{out}");
+    assert!(out.contains("ran-careful"), "{out}");
+    assert!(out.contains("declined"), "{out}");
+}
+
+#[test]
+fn works_in_powershell() {
+    let shell = if which::which("pwsh").is_ok() {
+        "pwsh"
+    } else if cfg!(windows) {
+        "powershell"
+    } else {
+        return;
+    };
+    let env = prepared();
+    // PowerShell reloads from its prompt hook, which scripts never trigger, so
+    // re-source by hand to check removal.
+    let init = init(&env, "ps1");
+    let script = format!(
+        ". '{init}'; hello; aka rm hello *> $null; . '{init}'; if (-not (Get-Command hello -ErrorAction SilentlyContinue)) {{ 'gone' }}"
+    );
+    let out = in_shell(
+        &env,
+        shell,
+        &["-NoProfile", "-NonInteractive", "-Command"],
+        &script,
+    );
+    assert!(out.contains("hello-from-aka"), "{out}");
+    assert!(out.contains("gone"), "{out}");
+}
+
+// ------------------------------------------------------------ review fixes
+
+/// Writes a tiny editor script that replaces the file it's given with `contents`.
+#[cfg(unix)]
+fn fake_editor(env: &Env, contents: &str) -> String {
+    use std::os::unix::fs::PermissionsExt;
+    let script = env.home().join("editor.sh");
+    let data = env.home().join("editor-output.toml");
+    fs::write(&data, contents).unwrap();
+    fs::write(
+        &script,
+        format!("#!/bin/sh\n/bin/cat '{}' > \"$1\"\n", data.display()),
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    script.display().to_string()
+}
+
+#[cfg(unix)]
+#[test]
+fn import_edits_a_symlinked_profile_only_once() {
+    let env = Env::new();
+    let profile = env.home().join(".profile");
+    fs::write(
+        &profile,
+        "alias a='echo a'\nalias b='echo b'\nkeepme=1\nimportant=2\n",
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(&profile, env.home().join(".bash_profile")).unwrap();
+    env.run(&["import", "-y", "--clean", "delete"]).success();
+    let text = fs::read_to_string(&profile).unwrap();
+    assert!(
+        text.contains("keepme=1") && text.contains("important=2"),
+        "{text}"
+    );
+    assert!(!text.contains("alias a="), "{text}");
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_alias_file_stays_linked() {
+    let env = Env::new();
+    let dots = env.home().join("dots");
+    fs::create_dir_all(&dots).unwrap();
+    fs::create_dir_all(env.root()).unwrap();
+    fs::write(dots.join("aliases.toml"), "version = 1\n").unwrap();
+    std::os::unix::fs::symlink(dots.join("aliases.toml"), env.root().join("aliases.toml")).unwrap();
+    env.run(&["add", "gs", "git status"]).success();
+    env.run(&["rm", "gs"]).success();
+    env.run(&["undo"]).success();
+    assert!(
+        fs::symlink_metadata(env.root().join("aliases.toml"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(
+        fs::read_to_string(dots.join("aliases.toml"))
+            .unwrap()
+            .contains("git status")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn editing_the_file_respects_locks() {
+    let env = Env::new();
+    env.run(&["add", "--lock", "deploy", "./deploy.sh"])
+        .success();
+    env.run(&["add", "gs", "git status"]).success();
+    let editor = fake_editor(
+        &env,
+        "version = 1\n[aliases.gs]\ncommand = \"git status\"\n",
+    );
+
+    // Deleting the locked alias is refused; declining a retry cancels.
+    env.aka()
+        .env("EDITOR", &editor)
+        .arg("edit")
+        .write_stdin("n\n")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("locked"));
+    assert!(env.plain_list().contains("deploy"));
+
+    // With --force it goes through, and the deleted alias lands in the trash.
+    env.aka()
+        .env("EDITOR", &editor)
+        .args(["edit", "--force"])
+        .assert()
+        .success();
+    assert!(!env.plain_list().contains("deploy"));
+    env.run(&["restore"])
+        .success()
+        .stdout(predicate::str::contains("deploy"));
+}
+
+#[cfg(unix)]
+#[test]
+fn edit_repairs_a_broken_alias_file() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status"]).success();
+    fs::write(env.root().join("aliases.toml"), "garbage [\n").unwrap();
+    env.run(&["list"])
+        .failure()
+        .stderr(predicate::str::contains("aka edit"));
+    let editor = fake_editor(
+        &env,
+        "version = 1\n[aliases.gs]\ncommand = \"git status -sb\"\n",
+    );
+    env.aka()
+        .env("EDITOR", &editor)
+        .arg("edit")
+        .assert()
+        .success();
+    assert_eq!(env.plain_list(), "gs\tgit status -sb\n");
+    // The broken version is kept as a backup
+    env.run(&["undo"]).success();
+    env.run(&["list"]).failure();
+}
+
+#[test]
+fn import_keeps_lines_aka_does_not_cover() {
+    let env = Env::new();
+    env.run(&["add", "--shell", "fish", "gs", "git status"])
+        .success();
+    let bashrc = env.home().join(".bashrc");
+    fs::write(&bashrc, "alias gs='git status'\n").unwrap();
+    env.run(&[
+        "import",
+        "-y",
+        "--clean",
+        "delete",
+        "--from",
+        bashrc.to_str().unwrap(),
+    ])
+    .success();
+    assert!(
+        fs::read_to_string(&bashrc)
+            .unwrap()
+            .contains("alias gs='git status'")
+    );
+}
+
+#[test]
+fn trash_keeps_older_versions() {
+    let env = Env::new();
+    env.run(&["add", "gs", "git status"]).success();
+    env.run(&["rm", "gs"]).success();
+    env.run(&["add", "gs", "git status -sb"]).success();
+    env.run(&["rm", "--purge", "gs"]).success();
+    // purge only dropped the live alias, the older trashed one is still there
+    env.run(&["restore", "gs"]).success();
+    assert_eq!(env.plain_list(), "gs\tgit status\n");
+
+    env.run(&["add", "-f", "gs", "v2"]).success();
+    env.run(&["rm", "gs"]).success();
+    env.run(&["add", "gs", "v3"]).success();
+    env.run(&["rm", "gs"]).success();
+    env.run(&["restore", "gs"]).success();
+    assert_eq!(env.plain_list(), "gs\tv3\n");
+    env.run(&["rm", "gs"]).success();
+    env.run(&["restore"])
+        .success()
+        .stdout(predicate::str::contains("v2").and(predicate::str::contains("v3")));
+}
+
+#[test]
+fn restore_refuses_loops() {
+    let env = Env::new();
+    env.run(&["add", "a", "b"]).success();
+    env.run(&["rm", "a"]).success();
+    env.run(&["add", "b", "a --x"]).success();
+    env.run(&["restore", "a"])
+        .failure()
+        .stderr(predicate::str::contains("loop"));
+}
+
+#[test]
+fn reserved_names_that_would_break_the_hook() {
+    let env = Env::new();
+    env.run(&["add", ".", "echo hi"])
+        .failure()
+        .stderr(predicate::str::contains("reserved"));
+    env.run(&["add", "command", "echo hi"]).failure();
+    env.run(&["add", "..", "cd .."]).success();
+}
+
+#[test]
+fn locks_hold_for_every_command() {
+    let env = Env::new();
+    env.run(&["add", "--lock", "gs", "git status"]).success();
+    env.run(&["cp", "gs", "gs2"]).success();
+    env.run(&["disable", "gs"]).success();
+    env.run(&["enable", "gs"]).success();
+    env.run(&["rename", "gs", "g"])
+        .failure()
+        .stderr(predicate::str::contains("locked"));
+    env.run(&["add", "-d", "note", "gs", "git status"])
+        .failure()
+        .stderr(predicate::str::contains("locked"));
+    env.run(&["rm", "-f", "gs"]).success();
+}

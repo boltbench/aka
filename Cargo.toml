@@ -1,0 +1,41 @@
+[package]
+name = "aka"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "A.K.A (also known as): manage your shell aliases from one place, in bash, zsh, fish and PowerShell"
+license = "MIT"
+repository = "https://github.com/zeuslcf/aka"
+homepage = "https://github.com/zeuslcf/aka"
+authors = ["Zouhair Loucif"]
+readme = "README.md"
+keywords = ["alias", "shell", "cli", "bash", "powershell"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+anyhow = "1.0.104"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+clap = { version = "4.6.7", features = ["derive", "env", "wrap_help"] }
+clap_complete = { version = "4.6.11", features = ["unstable-dynamic"] }
+comfy-table = "8.0.0"
+dirs = "7.0.0"
+fd-lock = "4.0.4"
+owo-colors = "4.4.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tempfile = "3.27.0"
+toml = "1.1.6"
+which = "8.0.6"
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+insta = "1.48.0"
+predicates = "3.1.4"
+serde_json = "1.0.151"
+tempfile = "3.27.0"
+which = "8.0.6"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
