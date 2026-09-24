@@ -58,7 +58,7 @@ jobs:
           Copy-Item "target/${{ matrix.target }}/release/aka.exe", README.md, LICENSE $name
           Compress-Archive -Path $name -DestinationPath "$name.zip"
           $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  $name.zip" | Out-File -Encoding ascii -NoNewline "$name.zip.sha256"
+          "$hash  $name.zip`n" | Out-File -Encoding ascii -NoNewline "$name.zip.sha256"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -88,7 +88,8 @@ jobs:
             on
           ' CHANGELOG.md > notes.md
           [ -s notes.md ] || echo "Release $GITHUB_REF_NAME" > notes.md
-          cat dist/*.sha256 > dist/checksums.txt
+          # One line per file, even if a .sha256 file lacks its final newline.
+          for f in dist/*.sha256; do tr -d '\r' < "$f" | head -n 1; echo; done | grep -v '^$' > dist/checksums.txt
 
       - uses: softprops/action-gh-release@v2
         with:
