@@ -3,596 +3,286 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>aka · short names for long shell commands</title>
-<meta name="description" content="aka gives your shell commands short names. One file, every shell: bash, zsh, fish and PowerShell. Undo, safety checks, suggestions from your history. Free and open source.">
-<meta name="theme-color" content="#0A0E1C">
+<title>aka · short names for long commands</title>
+<meta name="description" content="aka gives your shell commands short names. bash, zsh, fish and PowerShell. Free and open source.">
+<meta name="theme-color" content="#08080A">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<meta property="og:title" content="aka · short names for long shell commands">
-<meta property="og:description" content="One file, every shell: bash, zsh, fish and PowerShell. Free and open source.">
+<meta property="og:title" content="aka · short names for long commands">
+<meta property="og:description" content="bash, zsh, fish and PowerShell. Free and open source.">
 <meta property="og:image" content="https://boltbench.github.io/aka/og.png">
 <meta property="og:url" content="https://boltbench.github.io/aka/">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Martian+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --ink: #0A0E1C;
-    --ink-2: #111530;
-    --indigo: #1C1747;
-    --line: rgba(255, 255, 255, 0.09);
-    --line-strong: rgba(255, 255, 255, 0.16);
-    --text: #EEF0F8;
-    --muted: #9AA0BD;
-    --faint: #5E6485;
-    --violet: #C4B5FD;
-    --violet-deep: #8B5CF6;
-    --cyan: #22D3EE;
-    --accent: linear-gradient(135deg, var(--violet), var(--cyan));
-    --serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
-    --sans: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
-    --mono: "Martian Mono", "SF Mono", Menlo, Consolas, monospace;
-    --radius: 18px;
-    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --bg: #08080A;
+    --fg: #EDEDEF;
+    --dim: #8A8A93;
+    --faint: #45454D;
+    --hair: rgba(255, 255, 255, 0.08);
+    --dot-a: #C4B5FD;
+    --dot-b: #22D3EE;
+    --sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
   }
+  * { box-sizing: border-box; margin: 0; }
+  html { background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased; }
+  body { font: 400 15px/1.6 var(--sans); letter-spacing: -0.005em; }
+  a { color: inherit; text-decoration: none; }
+  ::selection { background: rgba(196, 181, 253, 0.3); }
 
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body {
-    margin: 0;
-    background: var(--ink);
-    color: var(--text);
-    font: 400 17px/1.6 var(--sans);
-    -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
-  }
-  a { color: inherit; }
-  ::selection { background: rgba(139, 92, 246, 0.45); }
+  .page { width: min(1080px, calc(100% - 48px)); margin: 0 auto; }
 
-  /* Atmosphere: a slow drifting glow and fine grain over everything */
-  .sky {
-    position: fixed; inset: -20vh -20vw; z-index: -2; pointer-events: none;
-    background:
-      radial-gradient(40vw 40vw at 22% 12%, rgba(139, 92, 246, 0.28), transparent 60%),
-      radial-gradient(34vw 34vw at 82% 30%, rgba(34, 211, 238, 0.12), transparent 60%),
-      radial-gradient(50vw 40vw at 50% 110%, rgba(28, 23, 71, 0.9), transparent 70%);
-    animation: drift 26s ease-in-out infinite alternate;
+  /* Top bar */
+  header {
+    display: flex; justify-content: space-between; align-items: center;
+    height: 88px;
   }
-  @keyframes drift {
-    to { transform: translate3d(3vw, 4vh, 0) scale(1.06); }
-  }
-  .grain {
-    position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0.07;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
+  .mark svg { height: 22px; width: auto; display: block; }
+  .top-link { font-size: 14px; color: var(--dim); transition: color .3s; }
+  .top-link:hover { color: var(--fg); }
 
-  .wrap { width: min(1120px, calc(100% - 48px)); margin: 0 auto; }
-
-  /* Nav */
-  nav {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 28px 0;
-  }
-  .brand { display: inline-flex; align-items: center; text-decoration: none; }
-  .brand svg { height: 30px; width: auto; }
-  .nav-links { display: flex; gap: 28px; align-items: center; font-size: 15px; }
-  .nav-links a { text-decoration: none; color: var(--muted); transition: color .2s; }
-  .nav-links a:hover { color: var(--text); }
-  .gh {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 8px 14px; border: 1px solid var(--line-strong); border-radius: 999px;
-    color: var(--text) !important;
-  }
-  .gh:hover { border-color: rgba(196, 181, 253, 0.5); }
-  .gh svg { width: 16px; height: 16px; }
-
-  /* Hero */
+  /* Hero: one command, compressing */
   .hero {
-    display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 64px; align-items: center;
-    padding: 72px 0 96px;
+    min-height: calc(100svh - 88px);
+    display: flex; flex-direction: column; justify-content: center;
+    padding-bottom: 12vh;
   }
-  .hero > *, .agents > * { min-width: 0; }
-  .eyebrow {
-    font: 500 12px/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase;
-    color: var(--violet); display: inline-flex; align-items: center; gap: 10px;
+  .stage {
+    font: 400 clamp(20px, 5.8vw, 58px)/1.1 var(--mono);
+    letter-spacing: -0.02em;
+    height: 1.4em; display: flex; align-items: center;
+    white-space: pre;
   }
-  .eyebrow::before {
-    content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
-    box-shadow: 0 0 14px rgba(139, 92, 246, 0.8);
+  .stage .ch {
+    display: inline-block; overflow: hidden; width: 0.6em; text-align: center;
+    color: var(--faint); opacity: 0; transform: translateY(0.25em); filter: blur(4px);
+    transition:
+      width 0.9s var(--ease),
+      opacity 0.6s var(--ease),
+      transform 0.7s var(--ease),
+      filter 0.7s var(--ease),
+      color 0.7s var(--ease);
   }
-  h1 {
-    font: 400 clamp(46px, 6.2vw, 84px)/0.98 var(--serif);
-    letter-spacing: -0.02em; margin: 22px 0 24px;
+  .stage .ch.in { opacity: 1; transform: none; filter: none; }
+  .stage .ch.key.lit { color: var(--fg); }
+  .stage .ch.out { width: 0; opacity: 0; filter: blur(6px); transform: scale(0.8); }
+  .stage .ch.leave { opacity: 0; transform: translateY(-0.25em); filter: blur(4px); }
+  /* A thin cursor in the brand gradient, the page's only color */
+  .stage .caret {
+    display: inline-block; width: 0.08em; height: 0.95em; margin-left: 0.12em; border-radius: 1px;
+    background: linear-gradient(180deg, var(--dot-a), var(--dot-b));
+    opacity: 0; transition: opacity .6s var(--ease);
   }
-  h1 em { font-style: italic; color: transparent; background: var(--accent); -webkit-background-clip: text; background-clip: text; padding-right: 0.06em; }
-  .lede { font-size: 19px; color: var(--muted); max-width: 30em; margin: 0 0 36px; }
-  .lede strong { color: var(--text); font-weight: 500; }
+  .stage .caret.on { opacity: 1; animation: blink 1.1s steps(1) .6s infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
 
-  /* Install box with OS tabs */
-  .install { max-width: 560px; }
-  .tabs { display: flex; gap: 4px; margin-bottom: 10px; }
-  .tab {
-    font: 500 13px/1 var(--sans); color: var(--muted); background: none; border: 0;
-    padding: 8px 12px; border-radius: 8px; cursor: pointer;
+  .line {
+    margin-top: 40px; font-size: clamp(17px, 1.6vw, 20px); color: var(--dim);
+    max-width: 30em;
   }
-  .tab[aria-selected="true"] { color: var(--text); background: rgba(255, 255, 255, 0.06); }
+  .line b { font-weight: 500; color: var(--fg); }
+
+  .get { margin-top: 44px; max-width: 640px; }
+  .os { display: flex; gap: 20px; font-size: 13px; margin-bottom: 14px; }
+  .os button {
+    font: inherit; color: var(--faint); background: none; border: 0; padding: 0; cursor: pointer;
+    transition: color .3s;
+  }
+  .os button[aria-pressed="true"] { color: var(--fg); }
+  .os button:hover { color: var(--fg); }
   .cmd {
-    display: flex; align-items: center; gap: 12px;
-    background: rgba(5, 7, 16, 0.7); border: 1px solid var(--line-strong);
-    border-radius: 14px; padding: 14px 14px 14px 18px;
-    font: 400 13px/1.5 var(--mono); color: #D8DBEE;
+    display: flex; align-items: center; gap: 16px;
+    border-bottom: 1px solid var(--hair); padding: 0 0 14px;
+    font: 400 13.5px/1.5 var(--mono); color: var(--dim);
   }
   .cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
   .cmd code::-webkit-scrollbar { display: none; }
-  .cmd .p { color: var(--violet-deep); user-select: none; }
+  .cmd code .p { color: var(--faint); user-select: none; }
   .copy {
-    flex: none; font: 500 12px/1 var(--sans); color: var(--text); cursor: pointer;
-    background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); border-radius: 9px;
-    padding: 9px 12px; transition: background .2s, transform .15s;
+    flex: none; font: 500 12px/1 var(--sans); color: var(--fg); letter-spacing: 0;
+    background: none; border: 0; padding: 4px 0; cursor: pointer; position: relative;
   }
-  .copy:hover { background: rgba(255, 255, 255, 0.12); }
-  .copy:active { transform: scale(0.96); }
-  .copy.done { background: rgba(34, 211, 238, 0.16); border-color: rgba(34, 211, 238, 0.4); }
-  .then { margin-top: 14px; font-size: 14px; color: var(--faint); }
-  .then code { font: 400 13px var(--mono); color: var(--muted); }
+  .copy::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: currentColor;
+    transform: scaleX(0); transform-origin: right; transition: transform .4s var(--ease);
+  }
+  .copy:hover::after { transform: scaleX(1); transform-origin: left; }
 
-  /* The compressing terminal */
-  .term {
-    position: relative; border-radius: var(--radius);
-    background: linear-gradient(180deg, rgba(28, 23, 71, 0.55), rgba(10, 14, 28, 0.85));
-    border: 1px solid var(--line-strong);
-    box-shadow: 0 40px 120px -40px rgba(139, 92, 246, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    overflow: hidden;
+  /* Details: a quiet list */
+  .details { padding: 12vh 0 16vh; }
+  .row {
+    display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 32px;
+    padding: 28px 0; border-top: 1px solid var(--hair);
+    opacity: 0; transform: translateY(12px);
+    transition: opacity 1s var(--ease), transform 1s var(--ease);
   }
-  .term-bar { display: flex; gap: 7px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
-  .term-bar i { width: 11px; height: 11px; border-radius: 50%; background: rgba(255, 255, 255, 0.13); }
-  /* Sized so the longest example (45 characters) always fits on one line */
-  .term-body { padding: 26px 24px 30px; font: 400 clamp(10px, 1.02vw, 13.5px)/1.8 var(--mono); min-height: 250px; }
-  .line { display: flex; flex-wrap: nowrap; align-items: baseline; white-space: pre; }
-  .line .p { color: var(--violet-deep); margin-right: 1ch; }
-  .typed { display: inline-flex; flex-wrap: nowrap; }
-  .typed span {
-    display: inline-block; width: 1ch; overflow: hidden;
-    transition: width .45s var(--ease), opacity .35s ease, transform .45s var(--ease), color .3s;
-  }
-  .typed span.gone { width: 0; opacity: 0; transform: translateY(-6px) scale(0.6); }
-  .typed span.dim { color: var(--faint); }
-  .alias {
-    font-weight: 500; color: transparent; background: var(--accent);
-    -webkit-background-clip: text; background-clip: text;
-    opacity: 0; transform: translateY(8px); transition: opacity .5s var(--ease), transform .5s var(--ease);
-  }
-  .alias.on { opacity: 1; transform: none; }
-  .caret {
-    display: inline-block; width: 0.6ch; height: 1.15em; margin-left: 2px;
-    background: var(--violet); transform: translateY(0.2em);
-    animation: blink 1.05s steps(1) infinite;
-  }
-  @keyframes blink { 50% { opacity: 0; } }
-  .readout {
-    margin-top: 26px; display: flex; align-items: center; gap: 14px;
-    font: 400 12px/1.4 var(--mono); color: var(--faint); letter-spacing: 0.04em;
-    opacity: 0; transition: opacity .5s ease;
-  }
-  .readout.on { opacity: 1; }
-  .readout b { font-weight: 500; color: var(--text); }
-  .readout .arrow { color: var(--cyan); }
-  .bar { flex: 1; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
-  .bar span { display: block; height: 100%; width: 100%; background: var(--accent); transform-origin: left; transition: transform 1s var(--ease); }
-  .out { margin-top: 18px; color: var(--muted); font-size: 0.9em; line-height: 1.75; white-space: pre; opacity: 0; transition: opacity .5s ease .2s; }
-  .out.on { opacity: 1; }
-  .out .h { color: #F9E2AF; }
-  .out .b { color: #A6E3A1; }
-  .out .c { color: #89DCEB; }
+  .row:last-child { border-bottom: 1px solid var(--hair); }
+  .row.in { opacity: 1; transform: none; }
+  .row .k { font: 400 14px/1.6 var(--mono); color: var(--fg); }
+  .row .v { color: var(--dim); font-size: 16px; max-width: 34em; }
+  .row .v code { font: 400 14px var(--mono); color: var(--fg); }
 
-  /* Sections */
-  section { padding: 96px 0; border-top: 1px solid var(--line); }
-  .kicker { font: 500 12px/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--faint); }
-  h2 {
-    font: 400 clamp(36px, 4.4vw, 58px)/1.02 var(--serif); letter-spacing: -0.015em;
-    margin: 16px 0 20px; max-width: 16em;
-  }
-  h2 em { font-style: italic; color: var(--violet); }
-  .sub { color: var(--muted); max-width: 36em; margin: 0; }
-
-  /* Steps */
-  .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 56px; counter-reset: step; }
-  .step {
-    position: relative; padding: 28px; border-radius: var(--radius);
-    background: rgba(255, 255, 255, 0.025); border: 1px solid var(--line);
-  }
-  .step::before {
-    counter-increment: step; content: "0" counter(step);
-    font: 400 44px/1 var(--serif); font-style: italic; color: transparent;
-    -webkit-text-stroke: 1px rgba(196, 181, 253, 0.55); display: block; margin-bottom: 18px;
-  }
-  .step h3 { font: 600 18px/1.3 var(--sans); margin: 0 0 8px; }
-  .step p { color: var(--muted); font-size: 15px; margin: 0 0 18px; }
-  .snip {
-    font: 400 12.5px/1.7 var(--mono); color: #D8DBEE; background: rgba(5, 7, 16, 0.6);
-    border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; overflow-x: auto; white-space: pre;
-  }
-  .snip .p { color: var(--violet-deep); }
-  .snip .ok { color: #A6E3A1; }
-  .snip .m { color: var(--faint); }
-  .snip .a { color: var(--cyan); }
-
-  /* Features: an uneven grid, one wide card */
-  .features { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 20px; margin-top: 56px; }
-  .card {
-    grid-column: span 2; min-width: 0; padding: 28px; border-radius: var(--radius);
-    background: rgba(255, 255, 255, 0.025); border: 1px solid var(--line);
-    transition: border-color .3s, transform .4s var(--ease), background .3s;
-  }
-  .card:hover { border-color: rgba(196, 181, 253, 0.3); transform: translateY(-3px); background: rgba(255, 255, 255, 0.035); }
-  .card.wide { grid-column: span 4; }
-  .card h3 { font: 600 17px/1.3 var(--sans); margin: 0 0 8px; }
-  .card p { color: var(--muted); font-size: 15px; margin: 0; }
-  .card .snip { margin-top: 18px; }
-  .shells { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
-  .shells span {
-    font: 400 12px/1 var(--mono); padding: 8px 12px; border-radius: 999px;
-    border: 1px solid var(--line-strong); color: #D8DBEE;
-  }
-
-  /* AI agents */
-  .agents { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 64px; align-items: center; }
-  .compare { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
-  .compare > div { min-width: 0; }
-  .compare .snip { font-size: 13px; }
-  .compare .label { font: 500 11px/1 var(--mono); letter-spacing: 0.18em; text-transform: uppercase; color: var(--faint); margin-bottom: 8px; }
-  .note { margin-top: 18px; font-size: 14px; color: var(--faint); max-width: 34em; }
-
-  /* Install grid */
-  .installs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 48px; }
-  .installs .card { grid-column: auto; }
-  .installs .cmd { margin-top: 16px; padding: 12px 12px 12px 14px; font-size: 12px; }
-
-  /* Closing line and footer */
-  .closing { text-align: center; padding: 120px 0 110px; }
-  .closing h2 { margin: 0 auto 28px; }
-  .closing .cmd { max-width: 620px; margin: 0 auto; text-align: left; }
   footer {
-    border-top: 1px solid var(--line); padding: 36px 0 48px;
-    display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap;
-    color: var(--faint); font-size: 14px;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    padding: 0 0 48px; font-size: 13px; color: var(--faint);
   }
-  footer a { color: var(--muted); text-decoration: none; }
-  footer a:hover { color: var(--text); }
-  .by { display: inline-flex; align-items: center; gap: 10px; }
-  .by svg { width: 22px; height: 22px; }
+  footer a { color: var(--dim); transition: color .3s; }
+  footer a:hover { color: var(--fg); }
 
-  /* Load and scroll reveals */
-  .rise { opacity: 0; transform: translateY(18px); animation: rise .9s var(--ease) forwards; }
-  .d1 { animation-delay: .05s; } .d2 { animation-delay: .15s; } .d3 { animation-delay: .27s; }
-  .d4 { animation-delay: .4s; } .d5 { animation-delay: .55s; }
+  /* Load-in for the text under the command */
+  .rise { opacity: 0; transform: translateY(10px); animation: rise 1.2s var(--ease) forwards; }
+  .r1 { animation-delay: .5s; } .r2 { animation-delay: .7s; }
   @keyframes rise { to { opacity: 1; transform: none; } }
-  .reveal { opacity: 0; transform: translateY(22px); transition: opacity .9s var(--ease), transform .9s var(--ease); }
-  .reveal.in { opacity: 1; transform: none; }
-  .reveal.in:nth-child(2) { transition-delay: .08s; }
-  .reveal.in:nth-child(3) { transition-delay: .16s; }
-  .reveal.in:nth-child(4) { transition-delay: .24s; }
-  .reveal.in:nth-child(5) { transition-delay: .32s; }
-  .reveal.in:nth-child(6) { transition-delay: .4s; }
 
-  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  :focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; border-radius: 6px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  :focus-visible { outline: 1px solid var(--fg); outline-offset: 4px; }
 
-  @media (max-width: 900px) {
-    .hero, .agents { grid-template-columns: minmax(0, 1fr); gap: 48px; }
-    .term-body { font-size: clamp(8px, 1.9vw, 13.5px); }
-    .hero { padding-top: 40px; }
-    .steps, .installs, .features { grid-template-columns: minmax(0, 1fr); }
-    .card, .card.wide { grid-column: auto; }
-    .nav-links a:not(.gh) { display: none; }
-    section { padding: 72px 0; }
-  }
-  @media (max-width: 520px) {
-    .wrap { width: calc(100% - 32px); }
-    .term-body { font-size: clamp(8px, 2.45vw, 12px); padding: 22px 16px 24px; }
+  @media (max-width: 640px) {
+    .page { width: calc(100% - 40px); }
+    .row { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 22px 0; }
+    .hero { padding-bottom: 8vh; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
-    .rise, .reveal { opacity: 1; transform: none; }
+    .rise, .row { opacity: 1; transform: none; }
   }
 </style>
 </head>
 <body>
-<div class="sky" aria-hidden="true"></div>
-<div class="grain" aria-hidden="true"></div>
-
-<div class="wrap">
-  <nav class="rise d1">
-    <a class="brand" href="#" aria-label="aka home">
-      <svg viewBox="-6 122 530 218" role="img" aria-label="a.k.a">
-        <defs><linearGradient id="nd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#C4B5FD"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs>
-        <g fill="none" stroke="#EEF0F8" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
+<div class="page">
+  <header>
+    <a class="mark" href="./" aria-label="aka">
+      <svg viewBox="-6 122 530 218" aria-hidden="true">
+        <defs><linearGradient id="d" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#C4B5FD"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs>
+        <g fill="none" stroke="#EDEDEF" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="63" cy="270" r="46"/><line x1="109" y1="224" x2="109" y2="316"/>
           <line x1="229" y1="146" x2="229" y2="316"/><line x1="229" y1="290" x2="287" y2="224"/><line x1="253" y1="263" x2="289" y2="316"/>
           <circle cx="453" cy="270" r="46"/><line x1="499" y1="224" x2="499" y2="316"/>
         </g>
-        <circle cx="169" cy="312" r="21" fill="url(#nd)"/><circle cx="347" cy="312" r="21" fill="url(#nd)"/>
+        <circle cx="169" cy="312" r="21" fill="url(#d)"/><circle cx="347" cy="312" r="21" fill="url(#d)"/>
       </svg>
     </a>
-    <div class="nav-links">
-      <a href="#how">How it works</a>
-      <a href="#features">Features</a>
-      <a href="#install">Install</a>
-      <a class="gh" href="https://github.com/boltbench/aka">
-        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-        GitHub
-      </a>
-    </div>
-  </nav>
+    <a class="top-link" href="https://github.com/boltbench/aka">GitHub ↗</a>
+  </header>
 
-  <header class="hero">
-    <div>
-      <span class="eyebrow rise d2">also known as</span>
-      <h1 class="rise d3">Long commands,<br>now <em>short ones.</em></h1>
-      <p class="lede rise d4">aka gives your shell commands short names. <strong>One file, every shell:</strong> bash, zsh, fish and PowerShell. New aliases work right away, and nothing gets overwritten without asking.</p>
-
-      <div class="install rise d5">
-        <div class="tabs" role="tablist" aria-label="Your system">
-          <button class="tab" role="tab" aria-selected="true" data-os="unix">macOS &amp; Linux</button>
-          <button class="tab" role="tab" aria-selected="false" data-os="win">Windows</button>
-          <button class="tab" role="tab" aria-selected="false" data-os="cargo">Cargo</button>
+  <main>
+    <section class="hero">
+      <h1 class="sr">aka: short names for long shell commands</h1>
+      <div class="stage" id="stage" aria-hidden="true"></div>
+      <p class="line rise r1"><b>Short names for long commands.</b> One file, every shell: bash, zsh, fish and PowerShell.</p>
+      <div class="get rise r2">
+        <div class="os" role="group" aria-label="Install for">
+          <button aria-pressed="true" data-os="unix">macOS &amp; Linux</button>
+          <button aria-pressed="false" data-os="win">Windows</button>
+          <button aria-pressed="false" data-os="cargo">Cargo</button>
         </div>
         <div class="cmd">
-          <code id="install-cmd"><span class="p">$ </span><span class="c">curl -fsSL https://github.com/boltbench/aka/releases/latest/download/install.sh | sh</span></code>
-          <button class="copy" data-copy="#install-cmd .c">Copy</button>
-        </div>
-        <p class="then">Then run <code>aka setup</code> once. Free and open source, MIT.</p>
-      </div>
-    </div>
-
-    <div class="term rise d4" aria-hidden="true">
-      <div class="term-bar"><i></i><i></i><i></i></div>
-      <div class="term-body">
-        <div class="line"><span class="p">$</span><span class="typed" id="typed"></span><span class="alias" id="alias"></span><span class="caret"></span></div>
-        <div class="out" id="out"></div>
-        <div class="readout" id="readout">
-          <span><b id="from">0</b> chars</span><span class="arrow">→</span><span><b id="to">0</b></span>
-          <span class="bar"><span id="barfill"></span></span>
+          <code><span class="p">$ </span><span id="install">curl -fsSL https://github.com/boltbench/aka/releases/latest/download/install.sh | sh</span></code>
+          <button class="copy" id="copy">Copy</button>
         </div>
       </div>
-    </div>
-    <p class="sr">A terminal shows a long command like git log --oneline --graph --decorate --all -6 collapsing into the short alias glog.</p>
-  </header>
-</div>
+    </section>
 
-<section id="how">
-  <div class="wrap">
-    <span class="kicker reveal">How it works</span>
-    <h2 class="reveal">Name it once. <em>Use it everywhere.</em></h2>
-    <p class="sub reveal">Your aliases live in one small file. aka turns it into the right syntax for each shell and loads it for you, so there's no profile editing and no restart.</p>
-    <div class="steps">
-      <div class="step reveal">
-        <h3>Add an alias</h3>
-        <p>Any command, with an optional note or tag.</p>
-<div class="snip"><span class="p">$</span> aka add glog "git log --oneline --graph"
-<span class="ok">✓</span> Added <span class="a">glog</span> → git log --oneline --graph</div>
-      </div>
-      <div class="step reveal">
-        <h3>Use it right away</h3>
-        <p>In the terminal you're in, and every new one.</p>
-<div class="snip"><span class="p">$</span> glog
-<span class="m">* 4c54258 Add search API
-* d1a583c Fix token refresh</span></div>
-      </div>
-      <div class="step reveal">
-        <h3>Let it suggest more</h3>
-        <p>It reads your history locally and finds what's worth shortening.</p>
-<div class="snip"><span class="p">$</span> aka suggest
-<span class="m"> #  USED  COMMAND</span>
- 1  14    docker compose up -d --build</div>
-      </div>
-    </div>
-  </div>
-</section>
+    <section class="details" aria-label="Details">
+      <div class="row"><div class="k">aka add</div><div class="v">Name any command once. It works right away, in the terminal you're in and every new one.</div></div>
+      <div class="row"><div class="k">aka suggest</div><div class="v">Reads your history, locally, and finds the long commands worth shortening.</div></div>
+      <div class="row"><div class="k">aka undo</div><div class="v">Every change is backed up. Nothing gets replaced without asking.</div></div>
+      <div class="row"><div class="k">AGENTS.md</div><div class="v">List your aliases for your AI agent and it writes <code>glog</code> instead of the whole thing. Fewer characters, fewer tokens.</div></div>
+    </section>
+  </main>
 
-<section id="features">
-  <div class="wrap">
-    <span class="kicker reveal">Features</span>
-    <h2 class="reveal">Small tool. <em>Careful</em> about the details.</h2>
-    <div class="features">
-      <div class="card wide reveal">
-        <h3>Every shell, one file</h3>
-        <p>Write an alias once and it works in all of them, on macOS, Linux and Windows. Aliases that take arguments work too.</p>
-        <div class="shells"><span>bash</span><span>zsh</span><span>fish</span><span>PowerShell</span></div>
-<div class="snip"><span class="p">$</span> aka add mkcd 'mkdir -p "$1" &amp;&amp; cd "$1"'</div>
-      </div>
-      <div class="card reveal">
-        <h3>Asks before replacing</h3>
-        <p>Re-using a name shows both commands, and cancel is the default.</p>
-<div class="snip">gs already exists:
-  <span class="m">current</span> git status
-  <span class="m">new</span>     git status -sb
-[r]eplace / [n]ew name / <span class="a">[c]ancel</span></div>
-      </div>
-      <div class="card reveal">
-        <h3>Undo anything</h3>
-        <p>Every change is backed up. Removed aliases go to a trash you can restore from.</p>
-<div class="snip"><span class="p">$</span> aka undo
-<span class="ok">✓</span> Undid "remove gs".</div>
-      </div>
-      <div class="card reveal">
-        <h3>Safety checks</h3>
-        <p>Warns when a name hides a real command, blocks aliases that loop, and flags risky ones like <code>rm -rf</code>.</p>
-      </div>
-      <div class="card reveal">
-        <h3>Tab completion</h3>
-        <p>Alias names complete with their descriptions, and <code>gco&nbsp;&lt;Tab&gt;</code> still completes your branches.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section id="agents">
-  <div class="wrap agents">
-    <div>
-      <span class="kicker reveal">For AI agents too</span>
-      <h2 class="reveal">Fewer characters. <em>Fewer tokens.</em></h2>
-      <p class="sub reveal">Coding agents run the same long commands over and over. Tell yours about your aliases and it writes the short version instead: less to generate, less noise in the context.</p>
-      <p class="note reveal">This works when your agent's shell loads your shell config and the agent knows the aliases exist, so list them in <code>CLAUDE.md</code> or <code>AGENTS.md</code>. <code>aka list --plain</code> prints them, one per line.</p>
-    </div>
-    <div class="compare">
-      <div class="reveal">
-        <div class="label">Without aka · 45 characters</div>
-        <div class="snip">git log --oneline --graph --decorate --all -6</div>
-      </div>
-      <div class="reveal">
-        <div class="label">With aka · 4 characters</div>
-        <div class="snip"><span class="a">glog</span></div>
-      </div>
-      <div class="reveal">
-        <div class="label">In AGENTS.md</div>
-<div class="snip"><span class="m">## Shell aliases (from aka)</span>
-glog = git log --oneline --graph --decorate --all -6
-up   = docker compose up -d --build</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section id="install">
-  <div class="wrap">
-    <span class="kicker reveal">Install</span>
-    <h2 class="reveal">Thirty seconds, <em>then done.</em></h2>
-    <p class="sub reveal">Each script downloads the right build for your machine and checks its checksum before installing. Then run <code>aka setup</code> once and open a new terminal.</p>
-    <div class="installs">
-      <div class="card reveal">
-        <h3>macOS &amp; Linux</h3>
-        <p>Installs to <code>~/.local/bin</code>.</p>
-        <div class="cmd"><code id="i-unix">curl -fsSL https://github.com/boltbench/aka/releases/latest/download/install.sh | sh</code><button class="copy" data-copy="#i-unix">Copy</button></div>
-      </div>
-      <div class="card reveal">
-        <h3>Windows</h3>
-        <p>In PowerShell. Adds itself to your PATH.</p>
-        <div class="cmd"><code id="i-win">irm https://github.com/boltbench/aka/releases/latest/download/install.ps1 | iex</code><button class="copy" data-copy="#i-win">Copy</button></div>
-      </div>
-      <div class="card reveal">
-        <h3>From source</h3>
-        <p>With a recent Rust toolchain.</p>
-        <div class="cmd"><code id="i-cargo">cargo install --git https://github.com/boltbench/aka</code><button class="copy" data-copy="#i-cargo">Copy</button></div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<div class="wrap closing">
-  <h2 class="reveal">Stop retyping. <em>Start naming.</em></h2>
-  <div class="cmd reveal"><code id="i-last"><span class="p">$ </span><span class="c">aka add glog "git log --oneline --graph --decorate --all -6"</span></code><button class="copy" data-copy="#i-last .c">Copy</button></div>
-</div>
-
-<div class="wrap">
   <footer>
-    <span class="by">
-      <svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="116" fill="#15130E"/><path d="M300 74 L184 248 L252 248 L222 378 L346 192 L276 192 Z" fill="#FBBF24" stroke="#FBBF24" stroke-width="14" stroke-linejoin="round"/><rect x="132" y="386" width="248" height="26" rx="13" fill="#FAFAF9"/><rect x="162" y="404" width="26" height="44" rx="8" fill="#FAFAF9"/><rect x="324" y="404" width="26" height="44" rx="8" fill="#FAFAF9"/></svg>
-      <span>A <a href="https://github.com/boltbench">BoltBench</a> project · MIT licensed · no tracking</span>
-    </span>
-    <span>
-      <a href="https://github.com/boltbench/aka">Source</a> ·
-      <a href="https://github.com/boltbench/aka/releases/latest">Releases</a> ·
-      <a href="https://github.com/boltbench/aka/issues">Issues</a>
-    </span>
+    <span>MIT · A <a href="https://github.com/boltbench">BoltBench</a> project · No tracking</span>
+    <span><a href="https://github.com/boltbench/aka">Source</a> · <a href="https://github.com/boltbench/aka/releases/latest">Releases</a></span>
   </footer>
 </div>
 
 <script>
-  // Install tabs
   const installs = {
     unix: 'curl -fsSL https://github.com/boltbench/aka/releases/latest/download/install.sh | sh',
     win: 'irm https://github.com/boltbench/aka/releases/latest/download/install.ps1 | iex',
     cargo: 'cargo install --git https://github.com/boltbench/aka',
   };
-  const tabs = document.querySelectorAll('.tab');
-  const installCmd = document.querySelector('#install-cmd .c');
-  const setOs = os => {
-    tabs.forEach(t => t.setAttribute('aria-selected', String(t.dataset.os === os)));
-    installCmd.textContent = installs[os];
+  const installEl = document.getElementById('install');
+  const osButtons = document.querySelectorAll('.os button');
+  const pick = os => {
+    osButtons.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.os === os)));
+    installEl.textContent = installs[os];
   };
-  tabs.forEach(t => t.addEventListener('click', () => setOs(t.dataset.os)));
-  if (/Windows/i.test(navigator.userAgent)) setOs('win');
+  osButtons.forEach(b => b.addEventListener('click', () => pick(b.dataset.os)));
+  if (/Windows/i.test(navigator.userAgent)) pick('win');
 
-  // Copy buttons
-  document.querySelectorAll('.copy').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const text = document.querySelector(btn.dataset.copy).textContent.trim();
-      try {
-        await navigator.clipboard.writeText(text);
-      } catch {
-        const ta = Object.assign(document.createElement('textarea'), { value: text });
-        document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove();
-      }
-      btn.textContent = 'Copied'; btn.classList.add('done');
-      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1600);
-    });
+  const copy = document.getElementById('copy');
+  copy.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(installEl.textContent); } catch {}
+    copy.textContent = 'Copied';
+    setTimeout(() => (copy.textContent = 'Copy'), 1500);
   });
 
-  // Scroll reveals
-  const io = new IntersectionObserver(entries => {
-    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
-  }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
-  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+  const io = new IntersectionObserver(es => es.forEach((e, i) => {
+    if (!e.isIntersecting) return;
+    setTimeout(() => e.target.classList.add('in'), i * 90);
+    io.unobserve(e.target);
+  }), { threshold: 0.3 });
+  document.querySelectorAll('.row').forEach(r => io.observe(r));
 
-  // The hero: a long command types out, then collapses into its alias
+  // Each alias is hidden inside its command: the marked letters stay, the rest folds away.
   const examples = [
-    { long: 'git log --oneline --graph --decorate --all -6', short: 'glog',
-      out: '<span class="h">* 4c54258</span> <span class="b">(feature/search)</span> Add search API\n<span class="h">| * 24eacaa</span> <span class="c">(HEAD -&gt; main)</span> Update docs\n<span class="h">* d1a583c</span> Fix token refresh' },
-    { long: 'docker compose up -d --build', short: 'up',
-      out: '<span class="b">✔</span> Container api-db-1   <span class="b">Started</span>\n<span class="b">✔</span> Container api-web-1  <span class="b">Started</span>' },
-    { long: 'kubectl get pods -n production -o wide', short: 'pods',
-      out: 'NAME                  READY   STATUS\napi-7d9f8c6b5-x2kqp   1/1     <span class="b">Running</span>\nworker-5c8b7-mn4vz    1/1     <span class="b">Running</span>' },
+    { cmd: 'git log --oneline --graph', keep: [0, 4, 10, 20] },         // g l o g
+    { cmd: 'docker compose up --build', keep: [0, 7, 15, 16] },        // d c u p
+    { cmd: 'kubectl get pods --watch', keep: [0, 8, 12] },             // k g p
   ];
-  const typed = document.getElementById('typed');
-  const alias = document.getElementById('alias');
-  const out = document.getElementById('out');
-  const readout = document.getElementById('readout');
-  const from = document.getElementById('from');
-  const to = document.getElementById('to');
-  const barfill = document.getElementById('barfill');
-  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const stage = document.getElementById('stage');
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  function showFinal(ex) {
-    typed.innerHTML = ''; alias.textContent = ex.short; alias.classList.add('on');
-    out.innerHTML = ex.out.replace(/\n/g, '<br>'); out.classList.add('on');
-    from.textContent = ex.long.length; to.textContent = ex.short.length + ' chars';
-    barfill.style.transform = `scaleX(${ex.short.length / ex.long.length})`; readout.classList.add('on');
+  function build(ex) {
+    stage.innerHTML = '';
+    const chars = [...ex.cmd].map((c, i) => {
+      const s = document.createElement('span');
+      s.className = 'ch' + (ex.keep.includes(i) ? ' key' : '');
+      s.textContent = c === ' ' ? ' ' : c;
+      stage.append(s);
+      return s;
+    });
+    const dots = document.createElement('span');
+    dots.className = 'caret';
+    stage.append(dots);
+    return { chars, dots };
   }
 
   async function play(ex) {
-    alias.classList.remove('on'); alias.textContent = '';
-    out.classList.remove('on'); out.innerHTML = '';
-    readout.classList.remove('on'); barfill.style.transform = 'scaleX(1)';
-    typed.innerHTML = '';
-    const spans = [...ex.long].map(ch => {
-      const s = document.createElement('span');
-      s.textContent = ch === ' ' ? ' ' : ch;
-      return s;
-    });
-    for (const s of spans) { typed.append(s); await wait(26 + Math.random() * 30); }
-    await wait(650);
-    // Dim, then fold every character away from the edges inward.
-    spans.forEach(s => s.classList.add('dim'));
-    from.textContent = ex.long.length; to.textContent = ex.long.length + ' chars';
-    readout.classList.add('on');
-    await wait(350);
-    const order = spans.map((s, i) => [s, Math.abs(i - spans.length / 2)]).sort((a, b) => b[1] - a[1]);
-    order.forEach(([s], i) => setTimeout(() => s.classList.add('gone'), i * 12));
-    await wait(order.length * 12 + 260);
-    typed.innerHTML = '';
-    alias.textContent = ex.short; alias.classList.add('on');
-    to.textContent = ex.short.length + ' chars';
-    barfill.style.transform = `scaleX(${Math.max(ex.short.length / ex.long.length, 0.04)})`;
-    await wait(420);
-    out.innerHTML = ex.out.replace(/\n/g, '<br>'); out.classList.add('on');
-    await wait(3000);
+    const { chars, dots } = build(ex);
+    await sleep(30);
+    // 1. The whole command appears, letter by letter.
+    chars.forEach((c, i) => setTimeout(() => c.classList.add('in'), i * 22));
+    await sleep(chars.length * 22 + 700);
+    // 2. The letters of the alias light up.
+    chars.filter(c => c.classList.contains('key')).forEach((c, i) => setTimeout(() => c.classList.add('lit'), i * 120));
+    await sleep(900);
+    // 3. Everything else folds away and the alias closes up.
+    chars.filter(c => !c.classList.contains('key')).forEach((c, i) => setTimeout(() => c.classList.add('out'), i * 14));
+    await sleep(1100);
+    dots.classList.add('on');
+    await sleep(2400);
+    // 4. Out, before the next one.
+    dots.classList.remove('on');
+    chars.filter(c => c.classList.contains('key')).forEach((c, i) => setTimeout(() => c.classList.add('leave'), i * 60));
+    await sleep(700);
   }
 
   (async () => {
-    if (still) { showFinal(examples[0]); return; }
-    await wait(900);
+    if (still) {
+      const { chars, dots } = build(examples[0]);
+      chars.forEach(c => c.classList.add('in', ...(c.classList.contains('key') ? ['lit'] : ['out'])));
+      dots.classList.add('on');
+      return;
+    }
+    await sleep(250);
     for (let i = 0; ; i = (i + 1) % examples.length) await play(examples[i]);
   })();
 </script>
