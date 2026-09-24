@@ -22,11 +22,12 @@ fn main() {
 
     let cli = cli::Cli::parse();
     if let Err(e) = commands::run(cli) {
+        // Exit codes: 0 success, 1 error, 2 cancelled or declined at a prompt.
         if e.is::<prompt::Cancelled>() {
             ui::hint(e.to_string());
-        } else {
-            ui::error(format!("{e:#}"));
+            std::process::exit(2);
         }
+        ui::error(format!("{e:#}"));
         std::process::exit(1);
     }
 }

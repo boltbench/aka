@@ -4,7 +4,7 @@ use anyhow::{Context, Result, anyhow, bail};
 
 use crate::cli::AddArgs;
 use crate::context::Ctx;
-use crate::model::{Alias, AliasFile, State, now};
+use crate::model::{Alias, AliasFile, Shell, State, now};
 use crate::prompt::{self, Resolution};
 use crate::{safety, setup, store, ui};
 
@@ -82,6 +82,7 @@ pub fn add(ctx: &Ctx, mut args: AddArgs) -> Result<()> {
 
     if changed {
         ui::ok(format!("{verb} {} → {}", ui::code(&saved_as), command));
+        syntax_hint(&alias, &saved_as);
         if let Some(count) = misplaced {
             let split = args.command.len() - count;
             let options = join_command(&args.command[split..]);
@@ -98,6 +99,47 @@ pub fn add(ctx: &Ctx, mut args: AddArgs) -> Result<()> {
         setup_hint(ctx);
     }
     Ok(())
+}
+
+/// Points out shells the command probably won't work in, with a fix.
+fn syntax_hint(alias: &Alias, name: &str) {
+    let mut broken: Vec<(Shell, &str)> = safety::syntax_issues(&alias.command)
+        .into_iter()
+        .filter(|(shell, _)| alias.shells.is_empty() || alias.shells.contains(shell))
+        .collect();
+    if broken.is_empty() {
+        return;
+    }
+    broken.sort();
+    let names: Vec<&str> = broken.iter().map(|(s, _)| s.name()).collect();
+    let keep: Vec<&str> = Shell::ALL
+        .iter()
+        .filter(|s| !names.contains(&s.name()))
+        .filter(|s| alias.shells.is_empty() || alias.shells.contains(s))
+        .map(|s| s.name())
+        .collect();
+    ui::warn(format!(
+        "{} {}, so it probably won't work in {}.",
+        ui::code(&alias.command),
+        broken[0].1,
+        join_or(&names)
+    ));
+    if !keep.is_empty() {
+        ui::hint(format!(
+            "  To only use it where it works: aka add -f --shell {} {name} {}",
+            keep.join(","),
+            crate::shells::sh_quote(&alias.command)
+        ));
+    }
+}
+
+/// "a", "a or b", "a, b or c"
+fn join_or(items: &[&str]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.to_string(),
+        [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
+    }
 }
 
 fn already_runs(name: &str, command: &str) -> String {

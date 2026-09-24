@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use anyhow::{Result, bail};
 
-use crate::model::State;
+use crate::model::{Shell, State};
 
 const MAX_NAME_LEN: usize = 64;
 
@@ -270,6 +270,106 @@ pub fn danger(command: &str) -> Vec<&'static str> {
     reasons
 }
 
+/// Shells where `command` probably won't work, with the reason. Commands are
+/// passed to each shell as written, so bash/zsh syntax breaks in PowerShell
+/// and PowerShell syntax breaks everywhere else. These are hints, not proof.
+pub fn syntax_issues(command: &str) -> Vec<(Shell, &'static str)> {
+    let mut issues = Vec::new();
+    let words: Vec<&str> = command.split_whitespace().collect();
+    let heads = heads(command, false);
+    let has = |s: &str| command.contains(s);
+
+    let posix_reason = if heads.iter().any(|w| {
+        matches!(
+            w.as_str(),
+            "export" | "unset" | "source" | "[" | "[[" | "test"
+        )
+    }) {
+        Some("uses bash/zsh builtins like `export` or `[[`")
+    } else if words.first().is_some_and(|w| is_assignment(w)) {
+        Some("sets a variable with `NAME=value command`")
+    } else if has("/dev/null") {
+        Some("redirects to /dev/null")
+    } else if has("${") || has_posix_variable(command) {
+        Some("uses bash-style variables like $USER or ${NAME}")
+    } else if has("`") {
+        Some("uses backticks")
+    } else {
+        None
+    };
+    if let Some(reason) = posix_reason {
+        issues.push((Shell::Powershell, reason));
+    }
+    if has("[[") || has("`") || has("${") {
+        issues.push((Shell::Fish, "uses bash/zsh syntax fish doesn't have"));
+    }
+
+    // Windows PowerShell maps these names to its own cmdlets, which don't take
+    // Unix flags like `ls -la`.
+    if let [first, flag, ..] = words.as_slice()
+        && WINDOWS_PS_ALIASES.contains(first)
+        && flag.starts_with('-')
+        && !flag.starts_with("--")
+        && flag.len() > 2
+    {
+        issues.push((
+            Shell::Powershell,
+            "passes Unix flags to a command PowerShell replaces on Windows",
+        ));
+    }
+
+    let powershell_only = has("$env:")
+        || heads.iter().any(|w| is_cmdlet(w))
+        || words.iter().any(|w| w.eq_ignore_ascii_case("-ErrorAction"));
+    if powershell_only {
+        for shell in [Shell::Bash, Shell::Zsh, Shell::Fish] {
+            issues.push((shell, "uses PowerShell syntax"));
+        }
+    }
+    issues.dedup_by(|a, b| a.0 == b.0);
+    issues
+}
+
+const WINDOWS_PS_ALIASES: &[&str] = &[
+    "ls", "rm", "cp", "mv", "cat", "ps", "kill", "sort", "sleep", "curl", "wget", "man", "mount",
+];
+
+/// `$USER`, `$PATH` and friends. PowerShell spells these `$env:USER`, but has
+/// its own `$HOME`, `$PWD` and `$true`/`$false`/`$null`.
+fn has_posix_variable(command: &str) -> bool {
+    command.match_indices('$').any(|(i, _)| {
+        let name: String = command[i + 1..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        name.len() > 1
+            && name
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c == '_' || c.is_ascii_digit())
+            && !matches!(
+                name.as_str(),
+                "HOME" | "PWD" | "HOST" | "PROFILE" | "PSHOME"
+            )
+    })
+}
+
+fn is_assignment(word: &str) -> bool {
+    word.split_once('=').is_some_and(|(var, _)| {
+        !var.is_empty() && var.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    })
+}
+
+/// PowerShell's Verb-Noun command names, like `Get-ChildItem`.
+fn is_cmdlet(word: &str) -> bool {
+    const VERBS: &[&str] = &[
+        "Get", "Set", "New", "Remove", "Add", "Clear", "Invoke", "Start", "Stop", "Select",
+        "Where", "ForEach", "Out", "Write", "Test", "Copy", "Move", "Import", "Export", "Enter",
+    ];
+    word.split_once('-').is_some_and(|(verb, noun)| {
+        VERBS.contains(&verb) && noun.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+    })
+}
+
 /// If adding `name = command` would make aliases call each other in a circle,
 /// returns the cycle, e.g. `["a", "b", "a"]`.
 pub fn find_loop(state: &State, name: &str, command: &str) -> Option<Vec<String>> {
@@ -396,6 +496,36 @@ mod tests {
         assert!(danger("git reset --hard HEAD").contains(&"throws away uncommitted work"));
         // `sudo` only counts in command position
         assert!(danger("echo pseudo sudoku").is_empty());
+    }
+
+    #[test]
+    fn syntax_that_does_not_travel() {
+        let shells = |cmd| {
+            syntax_issues(cmd)
+                .into_iter()
+                .map(|(s, _)| s)
+                .collect::<Vec<_>>()
+        };
+        assert!(shells("git status").is_empty());
+        assert!(shells("cd .. && ls").is_empty());
+        assert!(shells("echo $HOME").is_empty());
+        assert_eq!(shells("export EDITOR=vim"), [Shell::Powershell]);
+        assert_eq!(shells("FOO=1 make"), [Shell::Powershell]);
+        assert_eq!(shells("echo $USER"), [Shell::Powershell]);
+        assert_eq!(shells("which x 2>/dev/null"), [Shell::Powershell]);
+        assert_eq!(shells("ls -la"), [Shell::Powershell]);
+        assert_eq!(
+            shells("[[ -f x ]] && cat x"),
+            [Shell::Powershell, Shell::Fish]
+        );
+        assert_eq!(
+            shells("Get-ChildItem -Force"),
+            [Shell::Bash, Shell::Zsh, Shell::Fish]
+        );
+        assert_eq!(
+            shells("echo $env:PATH"),
+            [Shell::Bash, Shell::Zsh, Shell::Fish]
+        );
     }
 
     #[test]

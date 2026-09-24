@@ -89,6 +89,13 @@ fn conflict_defaults_to_cancel() {
             predicate::str::contains("already exists").and(predicate::str::contains("Cancelled")),
         );
     assert_eq!(env.plain_list(), "gs\tgit status\n");
+    // Cancelling exits with 2, so scripts can tell it apart from an error (1).
+    env.aka()
+        .args(["add", "gs", "other"])
+        .write_stdin("c\n")
+        .assert()
+        .code(2);
+    env.run(&["rm", "nope"]).code(1);
 }
 
 #[test]

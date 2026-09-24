@@ -17,6 +17,10 @@ use crate::{shells, ui};
 
 /// How many snapshots to keep for undo.
 const KEEP_SNAPSHOTS: usize = 50;
+/// How many profile backups to keep (setup, uninstall and import make these).
+const KEEP_PROFILE_BACKUPS: usize = 50;
+/// How many lines `history.log` keeps.
+const KEEP_HISTORY: usize = 500;
 
 pub fn load(paths: &Paths) -> Result<State> {
     Ok(State {
@@ -219,28 +223,38 @@ fn snapshot(paths: &Paths) -> Result<String> {
 }
 
 fn prune_snapshots(paths: &Paths) -> Result<()> {
-    let mut ids = snapshot_ids(paths)?;
-    if ids.len() > KEEP_SNAPSHOTS {
-        ids.sort();
-        for id in &ids[..ids.len() - KEEP_SNAPSHOTS] {
-            fs::remove_dir_all(paths.backups_dir().join(id))?;
+    prune_oldest(&paths.backups_dir(), snapshot_ids(paths)?, KEEP_SNAPSHOTS)
+}
+
+/// Deletes the oldest subdirectories of `dir` so only `keep` remain. The names
+/// are timestamps, so sorting them sorts by age.
+fn prune_oldest(dir: &Path, mut names: Vec<String>, keep: usize) -> Result<()> {
+    if names.len() > keep {
+        names.sort();
+        for name in &names[..names.len() - keep] {
+            fs::remove_dir_all(dir.join(name))?;
         }
     }
     Ok(())
 }
 
-fn snapshot_ids(paths: &Paths) -> Result<Vec<String>> {
-    let Ok(entries) = fs::read_dir(paths.backups_dir()) else {
+fn subdirs(dir: &Path) -> Result<Vec<String>> {
+    let Ok(entries) = fs::read_dir(dir) else {
         return Ok(Vec::new());
     };
-    let mut ids = Vec::new();
+    let mut names = Vec::new();
     for entry in entries {
         let entry = entry?;
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if entry.file_type()?.is_dir() && name != "profiles" {
-            ids.push(name);
+        if entry.file_type()?.is_dir() {
+            names.push(entry.file_name().to_string_lossy().into_owned());
         }
     }
+    Ok(names)
+}
+
+fn snapshot_ids(paths: &Paths) -> Result<Vec<String>> {
+    let mut ids = subdirs(&paths.backups_dir())?;
+    ids.retain(|name| name != "profiles");
     Ok(ids)
 }
 
@@ -265,6 +279,21 @@ fn append_history(paths: &Paths, id: &str, message: &str) -> Result<()> {
         crate::model::now(),
         message.replace(['\t', '\n'], " ")
     )?;
+    drop(file);
+    trim_history(paths, KEEP_HISTORY)
+}
+
+/// Keeps only the newest `keep` lines of the history log.
+fn trim_history(paths: &Paths, keep: usize) -> Result<()> {
+    let text = fs::read_to_string(paths.history_file())?;
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.len() > keep {
+        let rest: String = lines[lines.len() - keep..]
+            .iter()
+            .map(|l| format!("{l}\n"))
+            .collect();
+        write_atomic(&paths.history_file(), &rest)?;
+    }
     Ok(())
 }
 
@@ -342,6 +371,8 @@ pub fn backup_profile(paths: &Paths, profile: &Path) -> Result<std::path::PathBu
         .replace(['/', '\\', ':'], "_");
     let dest = dir.join(name.trim_start_matches('_'));
     fs::copy(profile, &dest).with_context(|| format!("couldn't back up {}", profile.display()))?;
+    let backups = paths.profile_backups_dir();
+    prune_oldest(&backups, subdirs(&backups)?, KEEP_PROFILE_BACKUPS)?;
     Ok(dest)
 }
 
@@ -350,5 +381,48 @@ pub fn remove_if_exists(path: &Path) -> Result<()> {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e).with_context(|| format!("couldn't remove {}", path.display())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_paths() -> (tempfile::TempDir, Paths) {
+        let dir = tempfile::TempDir::new().unwrap();
+        let paths = Paths {
+            root: dir.path().join("aka"),
+            home: dir.path().to_path_buf(),
+        };
+        fs::create_dir_all(&paths.root).unwrap();
+        (dir, paths)
+    }
+
+    #[test]
+    fn history_keeps_the_newest_lines() {
+        let (_dir, paths) = temp_paths();
+        for i in 0..8 {
+            append_history(&paths, &format!("id{i}"), &format!("change {i}")).unwrap();
+        }
+        trim_history(&paths, 3).unwrap();
+        let kept: Vec<String> = history(&paths)
+            .unwrap()
+            .into_iter()
+            .map(|e| e.message)
+            .collect();
+        assert_eq!(kept, ["change 5", "change 6", "change 7"]);
+    }
+
+    #[test]
+    fn prunes_the_oldest_directories() {
+        let (_dir, paths) = temp_paths();
+        let dir = paths.profile_backups_dir();
+        for name in ["20260101", "20260103", "20260102", "20260104"] {
+            fs::create_dir_all(dir.join(name)).unwrap();
+        }
+        prune_oldest(&dir, subdirs(&dir).unwrap(), 2).unwrap();
+        let mut left = subdirs(&dir).unwrap();
+        left.sort();
+        assert_eq!(left, ["20260103", "20260104"]);
     }
 }
