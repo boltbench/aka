@@ -4,11 +4,11 @@ pub mod manage;
 
 use anyhow::Result;
 
-use crate::cli::{Cli, Command, ConfigAction, Format, ListArgs};
+use crate::cli::{AddArgs, AddOpts, Cli, Command, ConfigAction, Format, ListArgs};
 use crate::context::Ctx;
 use crate::model::{Alias, State};
 use crate::paths::Paths;
-use crate::{config, import, setup, shells, store, ui};
+use crate::{config, import, prompt, setup, shells, store, suggest, ui};
 
 pub fn run(cli: Cli) -> Result<()> {
     let ctx = Ctx {
@@ -48,6 +48,87 @@ fn default_view(ctx: &Ctx) -> Result<()> {
     )?;
     ui::hint("Run `aka --help` to see every command.");
     Ok(())
+}
+
+fn suggest_cmd(ctx: &Ctx, limit: usize, min_count: usize) -> Result<()> {
+    let files = suggest::history_files(&ctx.paths);
+    if files.is_empty() {
+        ui::info("Couldn't find any shell history to learn from.");
+        return Ok(());
+    }
+    let history: Vec<String> = files.iter().flat_map(suggest::read_history).collect();
+    let state = store::load(&ctx.paths)?;
+    let found = suggest::suggest(&history, &state, &suggest::Options { min_count, limit });
+    let sources: Vec<String> = files
+        .iter()
+        .map(|f| format!("{} ({})", f.shell, ctx.paths.pretty(&f.path)))
+        .collect();
+    ui::hint(format!(
+        "Read {} commands from {}. Nothing leaves this machine.",
+        history.len(),
+        sources.join(", ")
+    ));
+    if found.is_empty() {
+        ui::info("Nothing stands out yet. Try again after using your shell a bit more.");
+        return Ok(());
+    }
+
+    let mut table = comfy_table::Table::new();
+    table
+        .load_style(comfy_table::presets::NOTHING)
+        .set_header(["#", "USED", "COMMAND", "NAME"]);
+    for (i, s) in found.iter().enumerate() {
+        table.add_row([
+            (i + 1).to_string(),
+            s.count.to_string(),
+            s.command.clone(),
+            s.name.clone(),
+        ]);
+    }
+    ui::print(table.to_string());
+
+    let Some(answer) = prompt::ask(
+        "Add which? Numbers like `1 3`, `2=dcu` to pick the name, `all`, or Enter to skip:",
+    )?
+    else {
+        return Ok(());
+    };
+    let picks = parse_picks(&answer, found.len())?;
+    for (index, name) in picks {
+        let s = &found[index];
+        let args = AddArgs {
+            name: name.unwrap_or_else(|| s.name.clone()),
+            command: vec![s.command.clone()],
+            opts: AddOpts::default(),
+        };
+        match manage::add(ctx, args) {
+            Ok(()) => {}
+            Err(e) if e.is::<prompt::Cancelled>() => ui::hint(format!("Skipped {}.", s.command)),
+            Err(e) => ui::error(format!("{e:#}")),
+        }
+    }
+    Ok(())
+}
+
+/// Reads `1 3`, `2=dcu` or `all` into (index, custom name) pairs.
+fn parse_picks(answer: &str, count: usize) -> Result<Vec<(usize, Option<String>)>> {
+    if answer.trim().eq_ignore_ascii_case("all") {
+        return Ok((0..count).map(|i| (i, None)).collect());
+    }
+    let mut picks = Vec::new();
+    for part in answer.split([' ', ',']).filter(|p| !p.is_empty()) {
+        let (number, name) = match part.split_once('=') {
+            Some((n, name)) => (n, Some(name.to_string())),
+            None => (part, None),
+        };
+        let index: usize = number
+            .parse()
+            .ok()
+            .filter(|n| (1..=count).contains(n))
+            .ok_or_else(|| anyhow::anyhow!("`{number}` isn't one of the numbers above"))?;
+        picks.push((index - 1, name));
+    }
+    Ok(picks)
 }
 
 fn config_cmd(ctx: &Ctx, action: Option<ConfigAction>) -> Result<()> {
@@ -118,6 +199,7 @@ fn dispatch(ctx: &Ctx, command: Command) -> Result<()> {
         Command::Tag { name, tags } => manage::tag(ctx, &name, tags, true),
         Command::Untag { name, tags } => manage::tag(ctx, &name, tags, false),
         Command::Tags => list::tags(ctx),
+        Command::Suggest { limit, min_count } => suggest_cmd(ctx, limit, min_count),
         Command::Lock { names } => {
             manage::set_flag(ctx, names, "lock", "locked", |a: &mut Alias| {
                 !std::mem::replace(&mut a.locked, true)

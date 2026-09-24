@@ -135,6 +135,16 @@ pub enum Command {
     /// List your tags
     Tags,
 
+    /// Suggest aliases for long commands you type often (reads your shell history locally)
+    Suggest {
+        /// How many suggestions to show
+        #[arg(short = 'n', long, default_value_t = 10)]
+        limit: usize,
+        /// Only commands used at least this many times
+        #[arg(long, default_value_t = 3)]
+        min_count: usize,
+    },
+
     /// Protect aliases from being replaced, renamed or removed
     Lock {
         #[arg(required = true, add = alias_names())]

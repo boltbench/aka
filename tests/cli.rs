@@ -36,6 +36,9 @@ impl Env {
             .env("AKA_HOME", self.root())
             .env("NO_COLOR", "1")
             .env_remove("XDG_CONFIG_HOME")
+            .env_remove("XDG_DATA_HOME")
+            .env_remove("HISTFILE")
+            .env_remove("APPDATA")
             .env_remove("ZDOTDIR")
             .env_remove("VISUAL")
             .env_remove("EDITOR");
@@ -964,4 +967,57 @@ fn tags_group_aliases() {
     env.run(&["lock", "gs"]).success();
     env.run(&["tag", "gs", "daily"]).success();
     env.run(&["undo"]).success();
+}
+
+#[test]
+fn suggest_proposes_aliases_from_history() {
+    let env = Env::new();
+    let mut history = String::new();
+    for i in 0..12 {
+        history.push_str(&format!(": 17000000{i:02}:0;docker compose up -d\n"));
+    }
+    for i in 0..8 {
+        history.push_str(&format!(
+            ": 17000001{i:02}:0;git commit -m \"change {i}\"\n"
+        ));
+    }
+    history.push_str(": 1700000200:0;export API_TOKEN=abc\n");
+    fs::write(env.home().join(".zsh_history"), history).unwrap();
+
+    // Enter skips: nothing is added
+    env.aka()
+        .arg("suggest")
+        .write_stdin("\n")
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("docker compose up -d").and(predicate::str::contains("dcud")),
+        )
+        .stdout(predicate::str::contains("TOKEN").not());
+    assert_eq!(env.plain_list(), "");
+    env.aka()
+        .arg("suggest")
+        .write_stdin("9\n")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("isn't one of the numbers"));
+
+    // pick the first as suggested and the second under a name of our own
+    env.aka()
+        .arg("suggest")
+        .write_stdin("1 2=gcm\n")
+        .assert()
+        .success();
+    assert_eq!(
+        env.plain_list(),
+        "dcud\tdocker compose up -d\ngcm\tgit commit -m\n"
+    );
+
+    // both are aliases now, so there's nothing left to suggest
+    env.aka()
+        .arg("suggest")
+        .write_stdin("\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("docker compose").not());
 }

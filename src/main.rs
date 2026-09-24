@@ -11,6 +11,7 @@ mod safety;
 mod setup;
 mod shells;
 mod store;
+mod suggest;
 mod ui;
 
 use clap::{CommandFactory, Parser};
