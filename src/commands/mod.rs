@@ -59,12 +59,9 @@ fn suggest_cmd(ctx: &Ctx, limit: usize, min_count: usize) -> Result<()> {
     let history: Vec<String> = files.iter().flat_map(suggest::read_history).collect();
     let state = store::load(&ctx.paths)?;
     let found = suggest::suggest(&history, &state, &suggest::Options { min_count, limit });
-    let sources: Vec<String> = files
-        .iter()
-        .map(|f| format!("{} ({})", f.shell, ctx.paths.pretty(&f.path)))
-        .collect();
+    let sources: Vec<String> = files.iter().map(|f| ctx.paths.pretty(&f.path)).collect();
     ui::hint(format!(
-        "Read {} commands from {}. Nothing leaves this machine.",
+        "Read {} commands from {}, locally.",
         history.len(),
         sources.join(", ")
     ));
